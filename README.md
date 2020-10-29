@@ -1,6 +1,6 @@
 # ADM-Homework2
 
-# Algorithmic Methods of Data Mining Homework 2 : eCommerce analytics
+## Algorithmic Methods of Data Mining Homework 2 : eCommerce analytics
 
 ### Contributors :
 
