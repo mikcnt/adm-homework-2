@@ -3,8 +3,9 @@
 # Algorithmic Methods of Data Mining Homework 2 : eCommerce analytics
 
 ### Contributors :
+
 | Name         | Surname        | Matricola|
-| ------------ |:-----------=--:| --=====-:|
+| ------------ |:--------------:| --------:|
 | Michele      | Conti          |  1599133 |
 | Leonardo     | Masci          |  1822292 |
 | Mehrzad      | Jafari Ranjbar |  1937944 |
