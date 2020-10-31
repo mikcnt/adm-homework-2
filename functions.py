@@ -47,6 +47,41 @@ def purchases_extractor(df):
     gc.collect
     return df.loc[df.event_type == 'purchase']
 
+def views_extractor(df):
+    """Returns a slice of the given dataframe with event_type = view
+
+    Args:
+        df (pd.DataFrame): Input dataframe
+
+    Returns:
+        pd.DataFrame: slice of the input df with just view instances
+    """
+    gc.collect
+    return df.loc[df.event_type == 'view']
+
+def subcategories_extractor(df):
+    """Extracts two columns (categories and subcategories) from the column category_code
+
+    Args:
+        df (pd.DataFrame): Dataframe to use for the calculations
+
+    Returns:
+        pd.DataFrame: Dataframe with category and sub_category columns
+    """
+    # Now we can drop the `category_code` column, since we want to
+    # split this column in 2, respectively categories and sub categories
+    df_wt_cat = df.drop(columns=['category_code'])
+
+    # We create the two columns, first by selecting just the rows with a non-null value as column 
+    df_cat_subcat = df[df['category_code'].notnull()]['category_code']
+
+    # And finally by splitting the `column_code` feature in two columns; then just rename
+    df_cat_subcat = df_cat_subcat.str.split('.', expand=True).rename(columns={0: 'category', 1: 'sub_category_1', 2: 'sub_category_2', 3: 'sub_category_3'})
+
+    # Once we have the two dataframes, we can merge them back together
+    gc.collect()
+    return pd.concat([df_wt_cat, df_cat_subcat], axis=1)
+
 
 def plot_bar(to_plot, title, xlabel='x', ylabel='y', color='royalblue'):
     """Given a dataframe, plots a histogram over its values
@@ -110,6 +145,108 @@ def view_purch_avg_time(df):
 
     gc.collect
     return df_second_groups[pd.notnull(df_second_groups)['time_difference']]['time_difference'].mean()
+
+# [RQ2] Functions
+
+def products_for_category(df):
+    """Plot the histogram of the sold products for category (in ascending order)
+
+    Args:
+        df (pd.DataFrame): Dataframe to use for the calculations
+    """
+    # First select the dataframe rows corresponding to a purchase
+    purchases = purchases_extractor(df)
+    
+    # Extract the category and subcategories from the df
+    df_with_cats = subcategories_extractor(purchases)
+
+    # To count the number of products sold for each category, we can simply use a groupby on the category
+    # Then we have to count and select the `product_id` column
+    results = df_with_cats.groupby('category').count()[['product_id']].sort_values(by='product_id', ascending=False)
+
+    # We can then plot the histogram of the sold products for category
+    plot_bar(to_plot=results,
+             title='Products sold for category',
+             xlabel='categories',
+             ylabel='products sold',
+             color='darkcyan'
+             )
+    gc.collect()
+    return
+
+# 2.a
+
+def most_viewed_subcategories(df, num_subcat=15):
+    """Plot the histogram of the viewed products for subcategory (in ascending order)
+
+    Args:
+        df (pd.DataFrame): Dataframe to use for the calculations
+    """
+    # First select the dataframe rows corresponding to a view
+    views = views_extractor(df)
+
+    # Extract the category and subcategories from the df
+    views_with_cats = subcategories_extractor(views)
+
+    # Count the number of products viewed in each subcategory using a groupby on the first column of subcategories
+    results = views_with_cats.groupby('sub_category_1').count()[['event_type']].sort_values(by='event_type', ascending=False).iloc[:num_subcat]
+
+    # We can then plot the histogram of the number of viewed products for sub category
+    plot_bar(to_plot=results,
+                       title='Views for subcategory',
+                       xlabel='subcategories',
+                       ylabel='views',
+                       color='mediumvioletred'
+                       )
+    
+    gc.collect()
+    return
+
+# 2.b
+def unique_categories(df):
+    """Returns the unique values of the `category` column of the dataframe
+
+    Args:
+        df (pd.DataFrame): Dataframe to use for the calculations
+
+    Returns:
+        np.array: Unique values of the category column
+    """
+    purchases = purchases_extractor(df)
+    df_with_cats = subcategories_extractor(purchases)
+
+    return df_with_cats['category'].unique()
+
+def best_in_cat(df, cat=None):
+    """Returns dataframe containing the most sold products for category.
+    If cat is not `None`, then the most sold products for that specific category is returned
+
+    Args:
+        df (pd): DataFrame to use for the calculations
+        cat (str, optional): Name of the category for which we want the most sold products. Defaults to None.
+
+    Returns:
+        pd.DataFrame: Dataframe containing the most sold products for category.
+    """
+    # Extract purchases
+    purchases = purchases_extractor(df)
+
+    # Extract categories
+    df_with_cats = subcategories_extractor(purchases)
+
+    # First we have to groupby by the category and product and count the numbers of instances
+    df_count = df_with_cats.groupby(['category', 'product_id']).count()
+
+    # We can now groupby again on the category and apply the lambda to sort the results in descending order
+    df_bests_in_cat = df_count['event_type'].groupby('category', group_keys=False).apply(lambda x: x.sort_values(ascending=False).head(10)).reset_index()
+    
+    # If cat == None just return the dataframe containing all the categories
+    if cat == None:
+        return df_bests_in_cat
+    
+    # If one category is given, return the dataframe for that particular one
+    return df_bests_in_cat[df_bests_in_cat['category'] == cat]
+
 
 # [RQ3] Functions
 
