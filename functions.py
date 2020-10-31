@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from datetime import datetime
 import gc
 
+# Utils functions
 
 def load_data(month):
     """Load a csv file as a Pandas dataframe
@@ -72,6 +73,9 @@ def plot_bar(to_plot, title, xlabel='x', ylabel='y', color='royalblue'):
     gc.collect
     return
 
+# [RQ1] Functions
+
+# 1.e
 
 def view_purch_avg_time(df):
     """Compute how much time passes on average between the first view time and a purchase/addition to cart
@@ -107,6 +111,9 @@ def view_purch_avg_time(df):
     gc.collect
     return df_second_groups[pd.notnull(df_second_groups)['time_difference']]['time_difference'].mean()
 
+# [RQ3] Functions
+
+# 3.a
 
 def avg_price_cat(df, category):
     """Plot the average price of the products sold by the brands in a given category
@@ -133,6 +140,7 @@ def avg_price_cat(df, category):
     gc.collect
     return
 
+# 3.b
 
 def highest_price_brands(df):
     """Find, for each category, the brand with the highest average price. Return all the results in ascending order by price
@@ -180,6 +188,7 @@ def highest_price_brands(df):
     gc.collect
     return [x[0] for x in dict_values]
 
+# [RQ5] functions
 
 def avg_users(df):
     """Plot for each day of the week the hourly average of visitors the store has
@@ -212,6 +221,7 @@ def avg_users(df):
     gc.collect
     return
 
+# [RQ7] functions
 
 def pareto_principle(df, users_perc=20):
     """Compute the percentage of business conducted by a given percentage of the most influent users
