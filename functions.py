@@ -358,6 +358,68 @@ def avg_users(df):
     gc.collect
     return
 
+# [RQ6] functions
+
+# 6.a
+
+def conversion_rate(views, purchases):
+    """Computes the conversion rate between views and purchases
+
+    Args:
+        views (pd.DataFrame): Dataframe with `event_type` view
+        purchases (pd.DataFrame): Dataframe with `event_type` purchase
+
+    Returns:
+        float: Conversion rate
+    """
+    return purchases.groupby('product_id').count()['event_type'].sum() / views.groupby('product_id').count()['event_type'].sum()
+
+def overall_conversion_rate(df):
+    """Apply conversion_rate to return the conversion rate of a dataframe
+
+    Args:
+        df (pd.DataFrame): Dataframe to use for calculations
+
+    Returns:
+        float: Conversion rate of the given dataframe
+    """
+    df_with_cats = subcategories_extractor(df)
+    views = views_extractor(df)
+    purchases = purchases_extractor(df)
+    return conversion_rate(views, purchases)
+
+# 6.b
+
+def category_conv_rate(df):
+    """Return and plot the conversion rate for each category of the dataframe
+
+    Args:
+        df (pd.DataFrame): Dataframe to use for calculations
+
+    Returns:
+        pd.DataFrame: Dataframe containing the conversion rates for each category
+    """
+    dict = {}
+
+    df_with_cats = subcategories_extractor(df)
+
+    for _, frame in df_with_cats.groupby('category'):
+
+        views = views_extractor(frame)
+        purchases = purchases_extractor(frame)
+        dict[frame.iloc[0]['category']] = conversion_rate(views, purchases)
+        
+    conv_rate_cat = pd.DataFrame.from_dict(dict.items()).rename(columns={0: 'category', 1: 'conversion rate'}).set_index('category').sort_values(by='conversion rate', ascending=False)
+    plot_bar(to_plot=conv_rate_cat,
+             title='Conversion rate for category',
+             xlabel='category',
+             ylabel='conversion rate',
+             color='limegreen'
+            )
+
+    gc.collect()
+    return conv_rate_cat
+
 # [RQ7] functions
 
 def pareto_principle(df, users_perc=20):
