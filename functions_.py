@@ -367,7 +367,7 @@ def highest_price_brands(path):
     entire_df['price_avg'] = entire_df['price_sum'] / entire_df['price_count']
     entire_df = entire_df.drop(columns=['price_sum', 'price_count'])
     # entire_df = entire_df.groupby('category', group_keys=False, sort=False).apply(lambda x: x.sort_values(by='price_avg', ascending=False).head(1)).sort_values(by='price_avg')    
-    entire_df = entire_df.iloc[entire_df.groupby('category').idxmax()['price_avg']].sort_values(by='price_avg')
+    entire_df = entire_df.iloc[entire_df.reset_index().groupby('category').idxmax()['price_avg']].sort_values(by='price_avg')
     gc.collect
     return entire_df
 
