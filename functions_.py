@@ -8,6 +8,7 @@ from datetime import datetime
 import gc
 import dask
 import dask.dataframe as dd
+from collections import defaultdict
 
 # Utils functions
 
@@ -21,17 +22,6 @@ def load_data(path, cols):
         pd.Dataframe: Pandas dataframe from the csv of the given month
     """
     return pd.read_csv(path, usecols=cols)
-
-def load_data_dask(path, cols):
-    """Load a csv file as a Dask dataframe
-
-    Args:
-        month (str): Month of the data we wish to load
-
-    Returns:
-        dd.Dataframe: Dask dataframe from the csv of the given month
-    """
-    return dd.read_csv(path, usecols=cols)
 
 
 def df_parsed(df):
@@ -374,36 +364,53 @@ def highest_price_brands(path):
 
 # [RQ5] functions
 
-def avg_users(df):
-    """Plot for each day of the week the hourly average of visitors the store has
+def avg_users(path):
+    df = pd.read_csv(path, usecols=['event_time', 'user_id'], iterator=True, chunksize=100000)
+    
+    i = 0
+    n_weekdays = [0, 0, 0, 0, 0, 0, 0]
+    
+    def def_value():
+        return pd.DataFrame()
 
-    Args:
-        df (pd.DataFrame): Dataframe to use for the calculations
-    """
+    week_days = defaultdict(def_value)
+    
+    for frame in df:
+        frame = df_parsed(frame)
+        unique_dates = frame.event_time.dt.strftime('%d-%m-%y').unique()
+        
+        for date in unique_dates:
+            n_weekdays[datetime.strptime(date, "%d-%m-%y").weekday()] += 1
 
-    week_days = []
+        week_days = defaultdict(def_value)
+        
+        for _, week_day_df in frame.groupby(frame.event_time.dt.weekday):
+            users_num = week_day_df.groupby(week_day_df.event_time.dt.hour).count()
+            current_weekday = week_day_df.event_time.iloc[0].strftime('%A')
+            week_days[current_weekday] = week_days[current_weekday].append(users_num['user_id']).T
 
-    for _, week_day_df in df.groupby([df.event_time.dt.weekday], sort=False):
-        users_num = week_day_df.groupby(
-            [week_day_df.event_time.dt.hour], sort=False).count()['user_id']
-        week_days.append(
-            (users_num, week_day_df.event_time.iloc[0].strftime('%A')))
+    for day in week_days:
+        week_days[day] = week_days[day].reset_index().groupby('index').sum()
+        week_days[day] /= n_weekdays[time.strptime(day, "%A").tm_wday]
 
+    del frame
+    gc.collect()
+        
+        
+        
     plots_colors = ['royalblue', 'orange', 'mediumseagreen',
                     'crimson', 'darkcyan', 'coral', 'violet']
 
-    # For every day of the week, plot the average number of users that visit the store each hour
-    for i, (week_day, day_name) in enumerate(week_days):
-        # Plot them
-        plot_bar(to_plot=week_day,
-                 title='Average number of users per hour - {}'.format(
-                     day_name),
+    # Plot them
+    for i, day in enumerate(week_days):
+        plot_bar(to_plot=week_days[day],
+                 title='Average number of users per hour - {}'.format(day),
                  xlabel='Hour',
                  ylabel='Avg users',
                  color=plots_colors[i]
                  )
-    gc.collect
-    return
+        gc.collect
+    return week_days
 
 # [RQ6] functions
 
