@@ -92,7 +92,7 @@ def subcategories_extractor(df, to_drop):
     return pd.concat([df, df1], axis=1)
 
 
-def plot_bar(to_plot, title, xlabel='x', ylabel='y', color='royalblue'):
+def plot_bar(to_plot, title, xlabel='x', ylabel='y', color='royalblue', xticks=None):
     """Given a dataframe, plots a histogram over its values
 
     Args:
@@ -106,6 +106,9 @@ def plot_bar(to_plot, title, xlabel='x', ylabel='y', color='royalblue'):
     # Plot them
     _ = plt.figure()
     ax = to_plot.plot(figsize=(15, 6), kind='bar', color=color, zorder=3)
+    
+    if type(xticks) != type(None):
+        plt.xticks(*xticks)
 
     # Set up grids
     plt.grid(color='lightgray', linestyle='-.', zorder=0)
@@ -249,7 +252,7 @@ def best_in_cat(path, cat=None):
             results = None
         else:
             results = subcategories_extractor(frame, to_drop=cols_to_drop)
-            results = results.groupby(['category', 'product_id'], sort=False).count().reset_index()
+            results = results.groupby(['category', 'product_id'], sort=False).count()
         if i == 0:
             entire_df = results
         else:
@@ -257,7 +260,7 @@ def best_in_cat(path, cat=None):
         i += 1
         del frame
         gc.collect()
-    entire_df = entire_df.groupby(['category', 'product_id']).sum().reset_index()
+    entire_df = entire_df.groupby(['category', 'product_id']).sum()
     entire_df = entire_df.groupby('category', group_keys=False, sort=False).apply(lambda x: x.sort_values(by='event_type', ascending=False).head(10)).reset_index()
     if cat == None:
         return entire_df
@@ -270,26 +273,52 @@ def best_in_cat(path, cat=None):
 
 # 3.a
 
-def avg_price_cat(df, category):
+def avg_price_cat(path, category):
     """Plot the average price of the products sold by the brands in a given category
 
     Args:
         df (pd.DataFrame): Dataframe to use for the calculations
         category (int): Integer indicating the category for which we want the plot
     """
+    cols_to_drop = ['sub_category_1', 'sub_category_2', 'sub_category_3']
+    df = pd.read_csv(path, usecols=['event_type', 'category_code', 'brand', 'price'], iterator=True, chunksize=100000)
+    
+    def f(x):
+        d = {}
+        d['price_sum'] = x['price'].sum()
+        d['price_count'] = x['price'].count()
+        return pd.Series(d, index=['price_sum', 'price_count'])
+    
+    i = 0
+    for frame in df:
+        frame = purchases_extractor(frame)
+        frame = frame[frame['category_code'].notnull()]
+        if frame.empty:
+            results = None
+        else:
+            results = subcategories_extractor(frame, to_drop=cols_to_drop)
+            results = results.loc[results['category'] == category].groupby('brand', sort=False).apply(f)
+        if i == 0:
+            entire_df = results
+        else:
+            entire_df = entire_df.append(results)
+        i += 1
+        del frame
+        gc.collect()
+    entire_df = entire_df.groupby(['brand']).sum()
+    entire_df = (entire_df['price_sum'] / entire_df['price_count'])
+    
+    brands = entire_df.index
+    xticks_nums = range(0, len(brands), 5)
+    xticks_names = [brands[i] for i in xticks_nums]
 
-    # Create a dataframe with just the purchases as event_type
-    df_purchases = purchases_extractor(df)
-
-    # Compute the average prices
-    avg_prices = df_purchases.loc[df_purchases['category_id'] == category].groupby(
-        'brand', sort=False).mean()['price']
 
     # Plot them
-    plot_bar(to_plot=avg_prices,
+    plot_bar(to_plot=entire_df,
              title='Average price for brand',
              xlabel='brands',
-             ylabel='avg price'
+             ylabel='avg price',
+             xticks=(xticks_nums, xticks_names)
              )
 
     gc.collect
@@ -297,7 +326,7 @@ def avg_price_cat(df, category):
 
 # 3.b
 
-def highest_price_brands(df):
+def highest_price_brands(path):
     """Find, for each category, the brand with the highest average price. Return all the results in ascending order by price
 
     Args:
@@ -306,42 +335,42 @@ def highest_price_brands(df):
     Returns:
         list: List of brands sorted in ascending order by their respective price
     """
-    # Create a dataframe with just the purchases as event_type
-    df_purchases = purchases_extractor(df)
+    cols_to_drop = ['sub_category_1', 'sub_category_2', 'sub_category_3']
 
-    # Select only the ones where the `brand` column is not empty
-    df_notnull_purchases = df_purchases.loc[df_purchases.brand.notnull()]
-
-    # Instantiate a dictionary
-    high_brands = {}
-
-    # Fill with the category number as key and its (brand, price) as values
-    # brand selected will be the one with avg highest price in the selected category
-    # Iterate on the dframes created by the groupby on the category
-    for _, category_frame in df_notnull_purchases.groupby('category_id', sort=False):
-        category_num = category_frame['category_id'].iloc[0]
-
-        # For each frame, group on the brand and transform with mean
-        avg_prices_cat = category_frame.groupby('brand', sort=False).mean().reset_index()
-
-        # Select row index with highest price
-        idx = avg_prices_cat['price'].argmax()
-
-        # Extract brand name and respective price for each category
-        category_brand = avg_prices_cat.iloc[idx]['brand']
-        category_price = avg_prices_cat.iloc[idx]['price']
-
-        # Fill the dictionary
-        high_brands[category_num] = (category_brand, category_price)
-
-    dict_values = list(high_brands.values())
-
-    # Sort the dictionary values (brand, price) w.r.t. the price
-    dict_values.sort(key=lambda x: x[1])
-
-    # Return the keys, which are the actual brands sorted
+    df = pd.read_csv(path, usecols=['category_code', 'brand', 'price'], iterator=True, chunksize=100000)
+    
+    def f(x):
+        d = {}
+        d['price_sum'] = x['price'].sum()
+        d['price_count'] = x['price'].count()
+        return pd.Series(d, index=['price_sum', 'price_count'])
+    
+    i = 0
+    for frame in df:
+        frame = frame[frame['category_code'].notnull()]
+        if frame.empty:
+            results = None
+        else:
+            results = subcategories_extractor(frame, to_drop=cols_to_drop)
+        
+        results = results.groupby(['category', 'brand']).apply(f).reset_index()
+         
+        if i == 0:
+            entire_df = results
+        else:
+            entire_df = entire_df.append(results)
+        i += 1
+        del frame
+        gc.collect()
+        
+    entire_df = entire_df.groupby(['category', 'brand']).sum()
+    entire_df['price_avg'] = entire_df['price_sum'] / entire_df['price_count']
+    entire_df = entire_df.drop(columns=['price_sum', 'price_count'])
+    # entire_df = entire_df.groupby('category', group_keys=False, sort=False).apply(lambda x: x.sort_values(by='price_avg', ascending=False).head(1)).sort_values(by='price_avg')    
+    entire_df = entire_df.iloc[entire_df.groupby('category').idxmax()['price_avg']].sort_values(by='price_avg')
     gc.collect
-    return [x[0] for x in dict_values]
+    return entire_df
+
 
 # [RQ5] functions
 
