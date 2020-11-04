@@ -9,6 +9,7 @@ import gc
 import dask
 import dask.dataframe as dd
 from collections import defaultdict
+import functools
 
 # Utils functions
 
@@ -429,7 +430,10 @@ def conversion_rate(path):
     n_purchases = 0
     n_views = 0
     for frame in df:
-        n_purchases, n_views = purch_view(frame)
+        purchases, views = purch_view(frame)
+        n_purchases += purchases
+        n_views += views
+        
     return n_purchases / n_views
 
 # 6.b
@@ -441,17 +445,16 @@ def category_conv_rate(path):
     def def_value():
         return np.array([0, 0], dtype=float)
 
-    prova = defaultdict(def_value)
-    
+    purchases_and_views = defaultdict(def_value)
+
     for frame in df:
         frame = frame[frame['category_code'].notnull()]
         if not frame.empty:
             frame = subcategories_extractor(frame, to_drop=cols_to_drop)
             for category_name, sub_frame in frame.groupby('category', sort=False):
-                prova[category_name] += purch_view(sub_frame)
+                purchases_and_views[category_name] += purch_view(sub_frame)
     
-    cat_df = pd.DataFrame.from_dict(prova.items()).rename(columns={0: 'category', 1: 'purch_view'}).set_index('category')
-    cat_df = pd.DataFrame(cat_df.purch_view.tolist(), index= cat_df.index).rename(columns={0: 'purch_num', 1: 'views_num'})
+    cat_df = pd.DataFrame(purchases_and_views).T.rename(columns={0: 'purch_num', 1: 'views_num'})
     cat_df['conversion_rate'] = cat_df['purch_num'] / cat_df['views_num']
     cat_df = cat_df.drop(columns=['purch_num', 'views_num'])
     
@@ -471,42 +474,28 @@ def pareto_principle(path, users_perc=20):
     
     df = pd.read_csv(path, usecols=['event_type', 'price', 'user_id'], iterator=True, chunksize=1000000)
     
-    tot_purchases = 0
-    i = 0
-    for frame in df:
-        # Extract purchases for every frame
-        frame = purchases_extractor(frame)
-        
-        # Increase total purchases using the sum over the price column
-        tot_purchases += frame['price'].sum()
-        
-        # Extract the purchases for every user, grouping over the user_id and summing
-        purchases_for_user = frame.groupby('user_id', sort=False).sum()
-        
-        # if i == 0 means that we're dealing with the first chunk
-        # in this case, we'll take the purchases_for_user frame
-        # if it is not the first time, we're going to append that frame
-        # Same thing happens for the unique users. First time set the dataframe, then append
-        if i == 0:
-            results = purchases_for_user
-            unique_users = frame['user_id'].unique()
-        else:
-            results = results.append(purchases_for_user)
-            unique_users = np.append(unique_users, frame['user_id'].unique())
-        i += 1
-    
-    # Once we've worked with the whole df, we need to extract the results
-    
-    # 1) Extract unique users:
-    # since we appendeded to unique_users over and over, they're not unique anymore
-    # => extract the unique ones again. Then, just take the number of unique users with size
-    unique_users = np.unique(unique_users)
-    unique_users_number = unique_users.size
+    initial_results = {
+            'tot_purchases': 0,
+            'purchases_for_user': pd.DataFrame(),
+            'unique_users': np.array([])
+        }
+
+    def accumulate_data(prev, frame):
+        purchases = purchases_extractor(frame)
+        return {
+            'tot_purchases': prev['tot_purchases'] + purchases['price'].sum(),
+            'purchases_for_user': prev['purchases_for_user'].append(purchases.groupby('user_id', sort=False).sum()),
+            'unique_users': np.append(prev['unique_users'], purchases['user_id'].unique())
+        }
+
+    tot_purchases, purchases_for_user, unique_users = functools.reduce(accumulate_data, df, initial_results).values()
+
+    unique_users_number = np.unique(unique_users).size
     
     # 2) Results is now composed by the chunks of dataframes on which we've done the operations
     # but, merging, we've created new rows with the same user_id. This means that we have to
     # groupby again and sum over them. After that, just sort the values in descending order
-    results = results.groupby('user_id', sort=False).sum().sort_values('price', ascending=False)
+    purchases_for_user = purchases_for_user.groupby('user_id', sort=False).sum().sort_values('price', ascending=False)
     
     
     # Compute the number representing the (users_perc)% of the users
@@ -514,7 +503,7 @@ def pareto_principle(path, users_perc=20):
     twnty_percent_users = int(unique_users_number / 100 * users_perc)
     
     # Compute the expenses made by this percentage of users that spend the most
-    twenty_most = results.iloc[:twnty_percent_users]['price'].sum()
+    twenty_most = purchases_for_user.iloc[:twnty_percent_users]['price'].sum()
     
     # Return the percentage of expenses made by them w.r.t. to the total
     gc.collect()
