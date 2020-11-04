@@ -63,6 +63,30 @@ def views_extractor(df):
     gc.collect
     return df.loc[df.event_type == 'view']
 
+def cart_extractor(df):
+    """Returns a slice of the given dataframe with event_type = view
+
+    Args:
+        df (pd.DataFrame): Input dataframe
+
+    Returns:
+        pd.DataFrame: slice of the input df with just view instances
+    """
+    gc.collect
+    return df.loc[df.event_type == 'cart']
+
+def rmcart_extractor(df):
+    """Returns a slice of the given dataframe with event_type = view
+
+    Args:
+        df (pd.DataFrame): Input dataframe
+
+    Returns:
+        pd.DataFrame: slice of the input df with just view instances
+    """
+    gc.collect
+    return df.loc[df.event_type == 'remove_from_cart']
+
 def subcategories_extractor(df, to_drop):
     """Extracts two columns (categories and subcategories) from the column category_code
 
@@ -83,7 +107,7 @@ def subcategories_extractor(df, to_drop):
     return pd.concat([df, df1], axis=1)
 
 
-def plot_bar(to_plot, title, xlabel='x', ylabel='y', color='royalblue', xticks=None):
+def plot_bar(to_plot, title, xlabel='x', ylabel='y', color='royalblue', xticks=None, figsize=(15, 6)):
     """Given a dataframe, plots a histogram over its values
 
     Args:
@@ -94,9 +118,8 @@ def plot_bar(to_plot, title, xlabel='x', ylabel='y', color='royalblue', xticks=N
         color (str, optional): Color of the plot. Defaults to 'royalblue'.
     """
 
-    # Plot them
     _ = plt.figure()
-    ax = to_plot.plot(figsize=(15, 6), kind='bar', color=color, zorder=3)
+    ax = to_plot.plot(figsize=figsize, kind='bar', color=color, zorder=3)
     
     if type(xticks) != type(None):
         plt.xticks(*xticks)
@@ -112,6 +135,61 @@ def plot_bar(to_plot, title, xlabel='x', ylabel='y', color='royalblue', xticks=N
     return
 
 # [RQ1] Functions
+
+# 1.a
+
+def plt_avg_event_session(path):
+    df = pd.read_csv(path, usecols=['event_type', 'user_session'], iterator=True, chunksize=1000000)
+    
+    num_sessions = 0
+    num_views = 0
+    num_cart = 0
+    num_purchases = 0
+    
+    for frame in df:
+        views = views_extractor(frame)
+        cart = cart_extractor(frame)
+        purchases = purchases_extractor(frame)
+        
+        num_views += views.groupby('user_session').event_type.count().sum()
+        num_cart += cart.groupby('user_session').event_type.count().sum()
+        num_purchases += purchases.groupby('user_session').event_type.count().sum()
+        
+        num_sessions += frame['user_session'].nunique()
+        
+    avg_num_operations = [num_views, num_cart, num_purchases]
+    
+    avg_num_operations = [num / num_sessions for num in avg_num_operations]
+    
+    operation_names = ['View', 'Cart', 'Purchase']
+    
+    avg_num_df = pd.DataFrame(avg_num_operations, columns=['average number'], index=operation_names)
+    plot_bar(to_plot=avg_num_df,
+             title='Average number of operations for user session',
+             xlabel='Event type',
+             ylabel='Average number of operations',
+             color ='darkred',
+            )
+    gc.collect()
+    return
+
+# 1.b
+
+def avg_view_before_cart(path):
+    df = pd.read_csv(path, usecols=['event_type', 'user_id', 'product_id'], iterator=True, chunksize=1000000)
+    results = pd.DataFrame()
+    for frame in df:
+        frame['is_view'] = 0
+        frame['is_cart'] = 0
+        frame.loc[frame['event_type'] == 'view', 'is_view'] = 1
+        frame.loc[frame['event_type'] == 'cart', 'is_cart'] = 1
+        frame = frame.groupby(['user_id', 'product_id']).sum().reset_index()
+        results = results.append(frame)
+        
+    results = results.groupby(['user_id', 'product_id']).sum().reset_index()
+    results = results[results['is_cart'] != 0]
+    avg = (results['is_view'] / results['is_cart']).mean()
+    return avg
 
 # 1.e
 
