@@ -416,55 +416,46 @@ def avg_users(path):
 
 # 6.a
 
-def conversion_rate(views, purchases):
-    """Computes the conversion rate between views and purchases
-
-    Args:
-        views (pd.DataFrame): Dataframe with `event_type` view
-        purchases (pd.DataFrame): Dataframe with `event_type` purchase
-
-    Returns:
-        float: Conversion rate
-    """
-    return purchases.groupby('product_id', sort=False).count()['event_type'].sum() / views.groupby('product_id', sort=False).count()['event_type'].sum()
-
-def overall_conversion_rate(df, to_drop):
-    """Apply conversion_rate to return the conversion rate of a dataframe
-
-    Args:
-        df (pd.DataFrame): Dataframe to use for calculations
-
-    Returns:
-        float: Conversion rate of the given dataframe
-    """
-    df_with_cats = subcategories_extractor(df, to_drop)
+def purch_view(df):
     views = views_extractor(df)
     purchases = purchases_extractor(df)
-    return conversion_rate(views, purchases)
+    n_purchases = purchases.groupby('product_id', sort=False)['event_type'].count().sum().item()
+    n_views = views.groupby('product_id', sort=False)['event_type'].count().sum().item()
+    return n_purchases, n_views
+
+
+def conversion_rate(path):
+    df = pd.read_csv(path, usecols=['event_type', 'product_id'], iterator=True, chunksize=100000)
+    n_purchases = 0
+    n_views = 0
+    for frame in df:
+        n_purchases, n_views = purch_view(frame)
+    return n_purchases / n_views
 
 # 6.b
 
-def category_conv_rate(df, to_drop):
-    """Return and plot the conversion rate for each category of the dataframe
+def category_conv_rate(path):
+    cols_to_drop = ['sub_category_1', 'sub_category_2', 'sub_category_3']
+    df = pd.read_csv(path, usecols=['event_type', 'product_id', 'category_code'], iterator=True, chunksize=1000000)
+    
+    def def_value():
+        return np.array([0, 0], dtype=float)
 
-    Args:
-        df (pd.DataFrame): Dataframe to use for calculations
-
-    Returns:
-        pd.DataFrame: Dataframe containing the conversion rates for each category
-    """
-    dict = {}
-
-    df_with_cats = subcategories_extractor(df, to_drop)
-
-    for _, frame in df_with_cats.groupby('category', sort=False):
-
-        views = views_extractor(frame)
-        purchases = purchases_extractor(frame)
-        dict[frame.iloc[0]['category']] = conversion_rate(views, purchases)
-        
-    conv_rate_cat = pd.DataFrame.from_dict(dict.items()).rename(columns={0: 'category', 1: 'conversion rate'}).set_index('category').sort_values(by='conversion rate', ascending=False)
-    plot_bar(to_plot=conv_rate_cat,
+    prova = defaultdict(def_value)
+    
+    for frame in df:
+        frame = frame[frame['category_code'].notnull()]
+        if not frame.empty:
+            frame = subcategories_extractor(frame, to_drop=cols_to_drop)
+            for category_name, sub_frame in frame.groupby('category', sort=False):
+                prova[category_name] += purch_view(sub_frame)
+    
+    cat_df = pd.DataFrame.from_dict(prova.items()).rename(columns={0: 'category', 1: 'purch_view'}).set_index('category')
+    cat_df = pd.DataFrame(cat_df.purch_view.tolist(), index= cat_df.index).rename(columns={0: 'purch_num', 1: 'views_num'})
+    cat_df['conversion_rate'] = cat_df['purch_num'] / cat_df['views_num']
+    cat_df = cat_df.drop(columns=['purch_num', 'views_num'])
+    
+    plot_bar(to_plot=cat_df,
              title='Conversion rate for category',
              xlabel='category',
              ylabel='conversion rate',
@@ -472,7 +463,7 @@ def category_conv_rate(df, to_drop):
             )
 
     gc.collect()
-    return conv_rate_cat
+    return cat_df
 
 # [RQ7] functions
 
