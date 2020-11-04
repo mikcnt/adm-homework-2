@@ -467,43 +467,61 @@ def category_conv_rate(path):
 
 # [RQ7] functions
 
-def pareto_principle(df, users_perc=20):
-    """Compute the percentage of business conducted by a given percentage of the most influent users
-
-    Args:
-        df (pd.DataFrame): Dataframe to use for the calculations
-        users_perc (int, optional): Percentage of users to use for the calculations. Defaults to 20.
-
-    Returns:
-        float: Percentage of business conducted by the above users
-    """
-    # Select all the rows that have `purchase` as event_type
-    purchases = purchases_extractor(df)
-
-    # Compute the total expenses, that are the sum of the entire column `price`
-    tot_purchases = purchases['price'].sum()
-
-    # Compute the number of unique users actually buying something (i.e., for which event_type is `purchase`)
-    unique_users_number = purchases.user_id.unique().size
-
-    # Sort in descending order the purchases for every user, using groupby and sum
-    # The returning dataframe has the user that spends the most on top
-    purchases_for_user = purchases.groupby(
-        'user_id', sort=False).sum().sort_values('price', ascending=False)
-
+def pareto_principle(path, users_perc=20):
+    
+    df = pd.read_csv(path, usecols=['event_type', 'price', 'user_id'], iterator=True, chunksize=1000000)
+    
+    tot_purchases = 0
+    i = 0
+    for frame in df:
+        # Extract purchases for every frame
+        frame = purchases_extractor(frame)
+        
+        # Increase total purchases using the sum over the price column
+        tot_purchases += frame['price'].sum()
+        
+        # Extract the purchases for every user, grouping over the user_id and summing
+        purchases_for_user = frame.groupby('user_id', sort=False).sum()
+        
+        # if i == 0 means that we're dealing with the first chunk
+        # in this case, we'll take the purchases_for_user frame
+        # if it is not the first time, we're going to append that frame
+        # Same thing happens for the unique users. First time set the dataframe, then append
+        if i == 0:
+            results = purchases_for_user
+            unique_users = frame['user_id'].unique()
+        else:
+            results = results.append(purchases_for_user)
+            unique_users = np.append(unique_users, frame['user_id'].unique())
+        i += 1
+    
+    # Once we've worked with the whole df, we need to extract the results
+    
+    # 1) Extract unique users:
+    # since we appendeded to unique_users over and over, they're not unique anymore
+    # => extract the unique ones again. Then, just take the number of unique users with size
+    unique_users = np.unique(unique_users)
+    unique_users_number = unique_users.size
+    
+    # 2) Results is now composed by the chunks of dataframes on which we've done the operations
+    # but, merging, we've created new rows with the same user_id. This means that we have to
+    # groupby again and sum over them. After that, just sort the values in descending order
+    results = results.groupby('user_id', sort=False).sum().sort_values('price', ascending=False)
+    
+    
     # Compute the number representing the (users_perc)% of the users
     # (e.g., 20% of the number of unique users if users_perc = 20)
     twnty_percent_users = int(unique_users_number / 100 * users_perc)
-
+    
     # Compute the expenses made by this percentage of users that spend the most
-    twenty_most = purchases_for_user.iloc[:twnty_percent_users]['price'].sum()
-
+    twenty_most = results.iloc[:twnty_percent_users]['price'].sum()
+    
     # Return the percentage of expenses made by them w.r.t. to the total
     gc.collect()
     return twenty_most / (tot_purchases / 100)
 
 
-def plot_pareto(df, step=10, color='darkorange'):
+def plot_pareto(path, step=20, color='darkorange'):
     """Plot the trend of the business conducted by chunks of users, with a selected step
 
     Args:
@@ -511,11 +529,11 @@ def plot_pareto(df, step=10, color='darkorange'):
         step (int, optional): Step of the percentages of users. Defaults to 10.
         color (str, optional): Plot color. Defaults to 'darkorange'.
     """
-    x = np.arange(0, 105, step)
+    x = np.append(np.arange(5, 100, step), 100)
     paretos = np.array([])
 
     for perc in x:
-        paretos = np.append(paretos, pareto_principle(df, perc))
+        paretos = np.append(paretos, pareto_principle(path, perc))
 
     paretos_df = pd.DataFrame(index=x, data=paretos).rename(
         columns={0: 'Pareto Behaviour'})
