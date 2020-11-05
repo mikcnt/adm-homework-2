@@ -10,19 +10,27 @@ import dask
 import dask.dataframe as dd
 from collections import defaultdict
 import functools
+from itertools import chain
+
+dfs = ['./data/2019-Oct.csv',
+       './data/2019-Nov.csv',
+       './data/2019-Dec.csv',
+       './data/2020-Jan.csv',
+       './data/2020-Feb.csv',
+       './data/2020-Mar.csv',
+       './data/2020-Apr.csv']
 
 # Utils functions
 
-def load_data(path, cols):
-    """Load a csv file as a Pandas dataframe
 
-    Args:
-        month (str): Month of the data we wish to load
-
-    Returns:
-        pd.Dataframe: Pandas dataframe from the csv of the given month
-    """
-    return pd.read_csv(path, usecols=cols)
+def iter_all_dfs(df_paths, cols):
+    for i in range(len(df_paths)):
+        df = pd.read_csv(df_paths[i], usecols=cols, iterator=True, chunksize=1000000)
+        if i == 0:
+            all_dfs = df
+        else:
+            all_dfs = chain(all_dfs, df)
+    return all_dfs
 
 
 def df_parsed(df):
@@ -138,8 +146,9 @@ def plot_bar(to_plot, title, xlabel='x', ylabel='y', color='royalblue', xticks=N
 
 # 1.a
 
-def plt_avg_event_session(path):
-    df = pd.read_csv(path, usecols=['event_type', 'user_session'], iterator=True, chunksize=1000000)
+def plt_avg_event_session(df_paths):
+    # df = pd.read_csv(path, usecols=['event_type', 'user_session'], iterator=True, chunksize=1000000)
+    df = iter_all_dfs(df_paths, ['event_type', 'user_session'])
     
     num_sessions = 0
     num_views = 0
@@ -175,8 +184,10 @@ def plt_avg_event_session(path):
 
 # 1.b
 
-def avg_view_before_cart(path):
-    df = pd.read_csv(path, usecols=['event_type', 'user_id', 'product_id'], iterator=True, chunksize=1000000)
+def avg_view_before_cart(df_paths):
+    # df = pd.read_csv(path, usecols=['event_type', 'user_id', 'product_id'], iterator=True, chunksize=1000000)
+    df = iter_all_dfs(df_paths, ['event_type', 'user_id', 'product_id'])
+
     results = pd.DataFrame()
     for frame in df:
         frame['is_view'] = 0
@@ -193,52 +204,54 @@ def avg_view_before_cart(path):
 
 # 1.e
 
-def view_purch_avg_time(path):
-    """Compute how much time passes on average between the first view time and a purchase/addition to cart
+# def view_purch_avg_time(path):
+#     """Compute how much time passes on average between the first view time and a purchase/addition to cart
 
-    Args:
-        df (pd.DataFrame): Dataframe to use for the calculations
+#     Args:
+#         df (pd.DataFrame): Dataframe to use for the calculations
 
-    Returns:
-        float: Average value of the times that pass between the first view and a purchase/addition to cart
-    """
-    df = load_data(path, cols=['event_time', 'event_type', 'product_id', 'user_id'])
-    df = df_parsed(df)
+#     Returns:
+#         float: Average value of the times that pass between the first view and a purchase/addition to cart
+#     """
+#     df = load_data(path, cols=['event_time', 'event_type', 'product_id', 'user_id'])
+#     df = df_parsed(df)
 
-    df.loc[:, 'action'] = ''
-    df.loc[df.event_type == 'view', 'action'] = 'view'
-    df.loc[df.event_type.isin(['cart', 'purchase']),
-           'action'] = 'cart_purchase'
+#     df.loc[:, 'action'] = ''
+#     df.loc[df.event_type == 'view', 'action'] = 'view'
+#     df.loc[df.event_type.isin(['cart', 'purchase']),
+#            'action'] = 'cart_purchase'
 
-    def view_purch_timediff(x):
-        if x.shape[0] == 1:
-            return None
-        return max(x) - min(x)
+#     def view_purch_timediff(x):
+#         if x.shape[0] == 1:
+#             return None
+#         return max(x) - min(x)
 
-    df_first_groups = df.groupby(['product_id', 'user_id', 'action'], sort=False).aggregate(time_first_action=pd.NamedAgg(
-        column='event_time',
-        aggfunc='min'
-    )).reset_index()
+#     df_first_groups = df.groupby(['product_id', 'user_id', 'action'], sort=False).aggregate(time_first_action=pd.NamedAgg(
+#         column='event_time',
+#         aggfunc='min'
+#     )).reset_index()
 
-    del df
-    gc.collect()
+#     del df
+#     gc.collect()
 
-    df_second_groups = df_first_groups.groupby(['product_id', 'user_id'], sort=False).aggregate(time_difference=pd.NamedAgg(
-        column='time_first_action',
-        aggfunc=view_purch_timediff
-    )
-    ).reset_index()
+#     df_second_groups = df_first_groups.groupby(['product_id', 'user_id'], sort=False).aggregate(time_difference=pd.NamedAgg(
+#         column='time_first_action',
+#         aggfunc=view_purch_timediff
+#     )
+#     ).reset_index()
 
-    del df_first_groups
-    gc.collect
+#     del df_first_groups
+#     gc.collect
 
-    return df_second_groups[pd.notnull(df_second_groups)['time_difference']]['time_difference'].mean()
+#     return df_second_groups[pd.notnull(df_second_groups)['time_difference']]['time_difference'].mean()
 
 # [RQ2] Functions
 
-def products_for_category(path, color='darkcyan'):
+def products_for_category(df_paths, color='darkcyan'):
+    # df = pd.read_csv(path, usecols=['event_type', 'category_code', 'product_id'], iterator=True, chunksize=100000)
+    df = iter_all_dfs(df_paths, ['event_type', 'category_code', 'product_id'])
     cols_to_drop = ['sub_category_1', 'sub_category_2', 'sub_category_3']
-    df = pd.read_csv(path, usecols=['event_type', 'category_code', 'product_id'], iterator=True, chunksize=100000)
+
 
     i = 0
     for frame in df:
@@ -267,14 +280,16 @@ def products_for_category(path, color='darkcyan'):
 
 # 2.a
 
-def most_viewed_subcategories_month(path, num_subcat=15, plot=True, color='mediumvioletred'):
+def most_viewed_subcategories_month(df_paths, num_subcat=15, plot=True, color='mediumvioletred'):
     """Plot the histogram of the viewed products for subcategory (in ascending order)
 
     Args:
         df (pd.DataFrame): Dataframe to use for the calculations
     """
+    # df = pd.read_csv(path, usecols=['category_code', 'event_type'], iterator=True, chunksize=100000)
+    df = iter_all_dfs(df_paths, ['category_code', 'event_type'])
+
     cols_to_drop = ['category', 'sub_category_2', 'sub_category_3']
-    df = pd.read_csv(path, usecols=['category_code', 'event_type'], iterator=True, chunksize=100000)
 
     i = 0
     for frame in df:
@@ -304,14 +319,17 @@ def most_viewed_subcategories_month(path, num_subcat=15, plot=True, color='mediu
     return entire_df
 
 # 2.b
-def best_in_cat(path, cat=None):
+def best_in_cat(df_paths, cat=None):
     """Plot the histogram of the viewed products for subcategory (in ascending order)
 
     Args:
         df (pd.DataFrame): Dataframe to use for the calculations
     """
+
+    df = iter_all_dfs(df_paths, ['event_type', 'category_code', 'product_id'])
+
     cols_to_drop = ['sub_category_1', 'sub_category_2', 'sub_category_3']
-    df = pd.read_csv(path, usecols=['event_type', 'category_code', 'product_id'], iterator=True, chunksize=100000)
+    # df = pd.read_csv(path, usecols=['event_type', 'category_code', 'product_id'], iterator=True, chunksize=100000)
 
     i = 0
     for frame in df:
@@ -342,15 +360,17 @@ def best_in_cat(path, cat=None):
 
 # 3.a
 
-def avg_price_cat(path, category):
+def avg_price_cat(df_paths, category):
     """Plot the average price of the products sold by the brands in a given category
 
     Args:
         df (pd.DataFrame): Dataframe to use for the calculations
         category (int): Integer indicating the category for which we want the plot
     """
+    df = iter_all_dfs(df_paths, ['event_type', 'category_code', 'brand', 'price'])
+
     cols_to_drop = ['sub_category_1', 'sub_category_2', 'sub_category_3']
-    df = pd.read_csv(path, usecols=['event_type', 'category_code', 'brand', 'price'], iterator=True, chunksize=100000)
+    # df = pd.read_csv(path, usecols=['event_type', 'category_code', 'brand', 'price'], iterator=True, chunksize=100000)
     
     def f(x):
         d = {}
@@ -395,7 +415,7 @@ def avg_price_cat(path, category):
 
 # 3.b
 
-def highest_price_brands(path):
+def highest_price_brands(df_paths):
     """Find, for each category, the brand with the highest average price. Return all the results in ascending order by price
 
     Args:
@@ -404,9 +424,11 @@ def highest_price_brands(path):
     Returns:
         list: List of brands sorted in ascending order by their respective price
     """
+    df = iter_all_dfs(df_paths, ['category_code', 'brand', 'price'])
+
     cols_to_drop = ['sub_category_1', 'sub_category_2', 'sub_category_3']
 
-    df = pd.read_csv(path, usecols=['category_code', 'brand', 'price'], iterator=True, chunksize=100000)
+    # df = pd.read_csv(path, usecols=['category_code', 'brand', 'price'], iterator=True, chunksize=100000)
     
     def f(x):
         d = {}
@@ -440,11 +462,65 @@ def highest_price_brands(path):
     gc.collect
     return entire_df
 
+# [RQ4] functions
+
+# 4.a
+
+def monthly_profit_all_brands(df_paths, brand):
+    
+    entire_df = pd.DataFrame()
+    for month_path in df_paths:
+        
+        df = pd.read_csv(month_path, usecols=['event_type', 'brand', 'price'], iterator=True, chunksize=100000)
+        results = pd.DataFrame()
+        for frame in df:
+            frame = frame[frame['brand'].notnull()]
+            if not frame.empty:
+                frame = purchases_extractor(frame)
+                frame = frame.groupby('brand').sum()
+                results = results.append(frame)
+        
+        month_name = month_path.split('-')[1][:3]
+        results = results.groupby('brand').sum().rename(columns={'price': month_name})
+        entire_df = pd.concat([entire_df, results], axis=1)[['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr']]
+        
+    return entire_df, entire_df[entire_df.index == brand]
+
+# 4.b
+
+def top_losses(all_brands, num_worst=3):
+    months_diff_df = all_brands.copy()
+    cols = all_brands.columns
+    new_cols = []
+    for i in range(0, len(cols) - 1):
+        month_diff = cols[i] + '-' + cols[i + 1]
+        new_cols.append(month_diff)
+        months_diff_df[month_diff] = months_diff_df[cols[i]] - months_diff_df[cols[i + 1]]
+
+    months_diff_df = months_diff_df[new_cols]
+    
+    max_rows = pd.DataFrame(data=[months_diff_df.max(axis=1), months_diff_df.idxmax(axis=1)]).T
+
+    max_rows[['first_month', 'second_month']] = max_rows[1].str.split('-', expand=True)
+
+    max_rows = max_rows.sort_values(by=0, ascending=False).drop(columns=[0, 1]).head(num_worst)
+    
+    for i in range(num_worst):
+        brand = max_rows.index[i]
+        month_1 = max_rows['first_month'][i]
+        month_2 = max_rows['second_month'][i]
+        value_month_1 = all_brands[all_brands.index == brand][month_1].item()
+        value_month_2 = all_brands[all_brands.index == brand][month_2].item()
+        percentage_lost = 100 - value_month_2 / (value_month_1 / 100)
+        print('{} has lost {} between {} and {}'.format(brand, percentage_lost, month_1, month_2))
 
 # [RQ5] functions
 
-def avg_users(path):
-    df = pd.read_csv(path, usecols=['event_time', 'user_id'], iterator=True, chunksize=100000)
+def avg_users(df_paths):
+
+    df = iter_all_dfs(df_paths, ['event_time', 'user_id'])
+
+    # df = pd.read_csv(path, usecols=['event_time', 'user_id'], iterator=True, chunksize=100000)
     
     i = 0
     n_weekdays = [0, 0, 0, 0, 0, 0, 0]
@@ -503,8 +579,10 @@ def purch_view(df):
     return n_purchases, n_views
 
 
-def conversion_rate(path):
-    df = pd.read_csv(path, usecols=['event_type', 'product_id'], iterator=True, chunksize=100000)
+def conversion_rate(df_paths):
+    df = iter_all_dfs(df_paths, ['event_type', 'product_id'])
+
+    # df = pd.read_csv(path, usecols=['event_type', 'product_id'], iterator=True, chunksize=100000)
     n_purchases = 0
     n_views = 0
     for frame in df:
@@ -516,9 +594,11 @@ def conversion_rate(path):
 
 # 6.b
 
-def category_conv_rate(path):
+def category_conv_rate(df_paths):
+    df = iter_all_dfs(df_paths, ['event_type', 'product_id', 'category_code'])
+
     cols_to_drop = ['sub_category_1', 'sub_category_2', 'sub_category_3']
-    df = pd.read_csv(path, usecols=['event_type', 'product_id', 'category_code'], iterator=True, chunksize=1000000)
+    # df = pd.read_csv(path, usecols=['event_type', 'product_id', 'category_code'], iterator=True, chunksize=1000000)
     
     def def_value():
         return np.array([0, 0], dtype=float)
@@ -548,9 +628,10 @@ def category_conv_rate(path):
 
 # [RQ7] functions
 
-def pareto_principle(path, users_perc=20):
+def pareto_principle(df_paths, users_perc=20):
+    df = iter_all_dfs(df_paths, ['event_type', 'price', 'user_id'])
     
-    df = pd.read_csv(path, usecols=['event_type', 'price', 'user_id'], iterator=True, chunksize=1000000)
+    # df = pd.read_csv(path, usecols=['event_type', 'price', 'user_id'], iterator=True, chunksize=1000000)
     
     initial_results = {
             'tot_purchases': 0,
@@ -588,7 +669,7 @@ def pareto_principle(path, users_perc=20):
     return twenty_most / (tot_purchases / 100)
 
 
-def plot_pareto(path, step=20, color='darkorange'):
+def plot_pareto(df_paths, step=20, color='darkorange'):
     """Plot the trend of the business conducted by chunks of users, with a selected step
 
     Args:
@@ -600,7 +681,7 @@ def plot_pareto(path, step=20, color='darkorange'):
     paretos = np.array([])
 
     for perc in x:
-        paretos = np.append(paretos, pareto_principle(path, perc))
+        paretos = np.append(paretos, pareto_principle(df_paths, perc))
 
     paretos_df = pd.DataFrame(index=x, data=paretos).rename(
         columns={0: 'Pareto Behaviour'})
