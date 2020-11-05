@@ -398,7 +398,7 @@ def avg_price_cat(df_paths, category):
     entire_df = (entire_df['price_sum'] / entire_df['price_count'])
     
     brands = entire_df.index
-    xticks_nums = range(0, len(brands), 5)
+    xticks_nums = range(0, len(brands), 20)
     xticks_names = [brands[i] for i in xticks_nums]
 
 
@@ -482,7 +482,7 @@ def monthly_profit_all_brands(df_paths, brand):
         
         month_name = month_path.split('-')[1][:3]
         results = results.groupby('brand').sum().rename(columns={'price': month_name})
-        entire_df = pd.concat([entire_df, results], axis=1)[['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr']]
+        entire_df = pd.concat([entire_df, results], axis=1)#[['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr']]
         
     return entire_df, entire_df[entire_df.index == brand]
 
@@ -512,7 +512,7 @@ def top_losses(all_brands, num_worst=3):
         value_month_1 = all_brands[all_brands.index == brand][month_1].item()
         value_month_2 = all_brands[all_brands.index == brand][month_2].item()
         percentage_lost = 100 - value_month_2 / (value_month_1 / 100)
-        print('{} has lost {} between {} and {}'.format(brand, percentage_lost, month_1, month_2))
+        print('{} lost {:.2f}% between {} and {}'.format(brand, percentage_lost, month_1, month_2))
 
 # [RQ5] functions
 
@@ -537,15 +537,15 @@ def avg_users(df_paths):
         for date in unique_dates:
             n_weekdays[datetime.strptime(date, "%d-%m-%y").weekday()] += 1
 
-        week_days = defaultdict(def_value)
+        # week_days = defaultdict(def_value)
         
         for _, week_day_df in frame.groupby(frame.event_time.dt.weekday):
             users_num = week_day_df.groupby(week_day_df.event_time.dt.hour).count()
             current_weekday = week_day_df.event_time.iloc[0].strftime('%A')
-            week_days[current_weekday] = week_days[current_weekday].append(users_num['user_id']).T
+            week_days[current_weekday] = week_days[current_weekday].append(users_num['user_id'])
 
     for day in week_days:
-        week_days[day] = week_days[day].reset_index().groupby('index').sum()
+        week_days[day] = week_days[day].T.sum(axis=1)
         week_days[day] /= n_weekdays[time.strptime(day, "%A").tm_wday]
 
     del frame
@@ -614,7 +614,7 @@ def category_conv_rate(df_paths):
     
     cat_df = pd.DataFrame(purchases_and_views).T.rename(columns={0: 'purch_num', 1: 'views_num'})
     cat_df['conversion_rate'] = cat_df['purch_num'] / cat_df['views_num']
-    cat_df = cat_df.drop(columns=['purch_num', 'views_num'])
+    cat_df = cat_df.drop(columns=['purch_num', 'views_num']).sort_values(by=['conversion_rate'], ascending=False)
     
     plot_bar(to_plot=cat_df,
              title='Conversion rate for category',
@@ -669,7 +669,7 @@ def pareto_principle(df_paths, users_perc=20):
     return twenty_most / (tot_purchases / 100)
 
 
-def plot_pareto(df_paths, step=20, color='darkorange'):
+def plot_pareto(df_paths, step=30, color='darkorange'):
     """Plot the trend of the business conducted by chunks of users, with a selected step
 
     Args:
@@ -677,7 +677,7 @@ def plot_pareto(df_paths, step=20, color='darkorange'):
         step (int, optional): Step of the percentages of users. Defaults to 10.
         color (str, optional): Plot color. Defaults to 'darkorange'.
     """
-    x = np.append(np.arange(5, 100, step), 100)
+    x = np.arange(5, 100, step)
     paretos = np.array([])
 
     for perc in x:
