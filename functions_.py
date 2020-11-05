@@ -202,6 +202,32 @@ def avg_view_before_cart(df_paths):
     avg = (results['is_view'] / results['is_cart']).mean()
     return avg
 
+# 1.c
+
+def purchase_after_cart_prob(df_paths):
+    # df = pd.read_csv(path, usecols=['event_type', 'user_id', 'product_id'], iterator=True, chunksize=50000)
+    df = iter_all_dfs(df_paths, ['event_type', 'user_id', 'product_id'])
+
+    results = pd.DataFrame()
+    
+    for frame in df:
+        frame = frame[frame['event_type'] != 'view']
+        frame['is_cart'] = 0
+        frame['is_purchase'] = 0
+        frame.loc[frame['event_type'] == 'cart', 'is_cart'] = 1
+        frame.loc[frame['event_type'] == 'purchase', 'is_purchase'] = 1
+        frame = frame.groupby(['user_id', 'product_id']).sum().reset_index()
+        results = results.append(frame)
+    
+    results = results.groupby(['user_id', 'product_id']).sum()
+    results = results[results['is_cart'] == 1]
+
+
+    cart_purch_num_1 = results[(results['is_purchase'] == 1) & (results['is_cart'] == 1)].shape[0]
+    cart_total_num_1 = results.shape[0]
+
+    return cart_purch_num_1 / cart_total_num_1
+
 # 1.e
 
 # def view_purch_avg_time(path):
