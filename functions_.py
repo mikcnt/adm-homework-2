@@ -5,9 +5,8 @@ import squarify
 import time
 import matplotlib.pyplot as plt
 from datetime import datetime
+from datetime import timedelta
 import gc
-import dask
-import dask.dataframe as dd
 from collections import defaultdict
 import functools
 from itertools import chain
@@ -23,9 +22,9 @@ dfs = ['./data/2019-Oct.csv',
 # Utils functions
 
 
-def iter_all_dfs(df_paths, cols):
+def iter_all_dfs(df_paths, cols, chunksize=5000000):
     for i in range(len(df_paths)):
-        df = pd.read_csv(df_paths[i], usecols=cols, iterator=True, chunksize=1000000)
+        df = pd.read_csv(df_paths[i], usecols=cols, iterator=True, chunksize=chunksize)
         if i == 0:
             all_dfs = df
         else:
@@ -228,48 +227,63 @@ def purchase_after_cart_prob(df_paths):
 
     return cart_purch_num_1 / cart_total_num_1
 
+# 1.d
+
+def check_event_types(df_paths):
+    for path in df_paths:
+        print('Unique values in the `event_type` column for dataframe `{}` are:'.format(path.split('/')[-1]))
+        df = pd.read_csv(path, usecols=['event_type'], iterator=True, chunksize=5000000)
+        possible_event_types = np.array([])
+        for frame in df:
+            possible_event_types = np.append(possible_event_types, frame.event_type.unique())
+            possible_event_types = np.unique(possible_event_types)
+        
+        print(possible_event_types)
+        print('---'*10)
+
 # 1.e
 
-# def view_purch_avg_time(path):
-#     """Compute how much time passes on average between the first view time and a purchase/addition to cart
+def avg_time_view_action(df_paths):
+    df = iter_all_dfs(df_paths, ['event_time', 'event_type', 'user_session'], chunksize=2000000)
+    
+    views_results = pd.DataFrame()
+    carts_results = pd.DataFrame()
+    purchases_results = pd.DataFrame()
+    
+    
+    for frame in df:
+        frame = df_parsed(frame)
+        
+        views = views_extractor(frame).drop_duplicates('user_session')
+        carts = cart_extractor(frame).drop_duplicates('user_session')
+        purchases = purchases_extractor(frame).drop_duplicates('user_session')
+        
+        views_results = views_results.append(views)
+        carts_results = carts_results.append(carts)
+        purchases_results = purchases_results.append(purchases)
+        
+        del frame, views, carts, purchases
+        gc.collect()
+        
+        
+    views_results = views_results.sort_values(by='event_time').drop_duplicates('user_session')
+    carts_results = carts_results.sort_values(by='event_time').drop_duplicates('user_session')
+    purchases_results = purchases_results.drop_duplicates('user_session')
+    
+    views_carts = pd.merge(views_results, carts_results, on='user_session')
+    views_purchases = pd.merge(views_results, purchases_results, on='user_session')
+    
+    time_diff_carts = views_carts['event_time_y'] - views_carts['event_time_x']
+    time_diff_purchases = views_purchases['event_time_y'] - views_purchases['event_time_x']
 
-#     Args:
-#         df (pd.DataFrame): Dataframe to use for the calculations
 
-#     Returns:
-#         float: Average value of the times that pass between the first view and a purchase/addition to cart
-#     """
-#     df = load_data(path, cols=['event_time', 'event_type', 'product_id', 'user_id'])
-#     df = df_parsed(df)
-
-#     df.loc[:, 'action'] = ''
-#     df.loc[df.event_type == 'view', 'action'] = 'view'
-#     df.loc[df.event_type.isin(['cart', 'purchase']),
-#            'action'] = 'cart_purchase'
-
-#     def view_purch_timediff(x):
-#         if x.shape[0] == 1:
-#             return None
-#         return max(x) - min(x)
-
-#     df_first_groups = df.groupby(['product_id', 'user_id', 'action'], sort=False).aggregate(time_first_action=pd.NamedAgg(
-#         column='event_time',
-#         aggfunc='min'
-#     )).reset_index()
-
-#     del df
-#     gc.collect()
-
-#     df_second_groups = df_first_groups.groupby(['product_id', 'user_id'], sort=False).aggregate(time_difference=pd.NamedAgg(
-#         column='time_first_action',
-#         aggfunc=view_purch_timediff
-#     )
-#     ).reset_index()
-
-#     del df_first_groups
-#     gc.collect
-
-#     return df_second_groups[pd.notnull(df_second_groups)['time_difference']]['time_difference'].mean()
+    avg_carts = str(timedelta(seconds=time_diff_carts.mean().total_seconds())).split('.')[0]
+    avg_purchases = str(timedelta(seconds=time_diff_purchases.mean().total_seconds())).split('.')[0]
+        
+    print('Average time between first view and first cart is {}.'.format(avg_carts))
+    print('Average time between first view and first purchase is {}.'.format(avg_purchases))
+    
+    return
 
 # [RQ2] Functions
 
