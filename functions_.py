@@ -23,6 +23,16 @@ dfs = ['./data/2019-Oct.csv',
 
 
 def iter_all_dfs(df_paths, cols, chunksize=5000000):
+    """Create a Pandas iterable given a list of paths.
+
+    Args:
+        df_paths (str): List containing the paths of the csv files.
+        cols (list): List of columns to include in the dataframes of the iterable.
+        chunksize (int, optional): Chunksize of the iterable. Defaults to 5000000.
+
+    Returns:
+        pd.io.parsers.TextFileReader: Pandas dataframe iterable to work with a list of csv files in chunks.
+    """
     for i in range(len(df_paths)):
         df = pd.read_csv(df_paths[i], usecols=cols, iterator=True, chunksize=chunksize)
         if i == 0:
@@ -33,75 +43,65 @@ def iter_all_dfs(df_paths, cols, chunksize=5000000):
 
 
 def df_parsed(df):
-    """Parse the dates as Timestamps for a dataframe
+    """Parse the dates of a dataframe as Timestamps for a dataframe.
 
     Args:
-        df (pd.DataFrame): Dataframe on which we wish to parse the dates
+        df (pd.DataFrame): Dataframe on which we wish to parse the dates.
 
     Returns:
-        pd.DataFrame: Dataframe with the dates parsed as Timestamps
+        pd.DataFrame: Dataframe with the event_time column parsed as Timestamps.
     """
     df['event_time'] = pd.to_datetime(
         df['event_time'], format='%Y-%m-%d %H:%M:%S %Z')
     return df
 
 
-def purchases_extractor(df):
-    """Returns a slice of the given dataframe with event_type = purchase
+def only_purchases(df):
+    """Select only the rows of the dataframes with purchase in the `event_type` column.
 
     Args:
-        df (pd.DataFrame): Input dataframe
+        df (pd.DataFrame): Input dataframe.
 
     Returns:
-        pd.DataFrame: slice of the input df with just purchase instances
+        pd.DataFrame: Slice of the input df with just purchase instances.
     """
     gc.collect
     return df.loc[df.event_type == 'purchase']
 
-def views_extractor(df):
-    """Returns a slice of the given dataframe with event_type = view
+def only_views(df):
+    """Select only the rows of the dataframes with view in the `event_type` column.
 
     Args:
-        df (pd.DataFrame): Input dataframe
+        df (pd.DataFrame): Input dataframe.
 
     Returns:
-        pd.DataFrame: slice of the input df with just view instances
+        pd.DataFrame: Slice of the input df with just view instances.
     """
     gc.collect
     return df.loc[df.event_type == 'view']
 
-def cart_extractor(df):
-    """Returns a slice of the given dataframe with event_type = view
+def only_carts(df):
+    """Select only the rows of the dataframes with cart in the `event_type` column.
 
     Args:
-        df (pd.DataFrame): Input dataframe
+        df (pd.DataFrame): Input dataframe.
 
     Returns:
-        pd.DataFrame: slice of the input df with just view instances
+        pd.DataFrame: Slice of the input df with just cart instances.
     """
     gc.collect
     return df.loc[df.event_type == 'cart']
 
-def rmcart_extractor(df):
-    """Returns a slice of the given dataframe with event_type = view
-
-    Args:
-        df (pd.DataFrame): Input dataframe
-
-    Returns:
-        pd.DataFrame: slice of the input df with just view instances
-    """
-    gc.collect
-    return df.loc[df.event_type == 'remove_from_cart']
 
 def subcategories_extractor(df, to_drop):
-    """Extracts two columns (categories and subcategories) from the column category_code
+    """Split the `category_code` column in multiple columns: `category`, `sub_category_1`, `sub_category_2`, `sub_category_3`.
+    Then, drop the to_drop columns. Drop the rows of the dataframe where the `category_code` column is missing.
 
     Args:
-        df (pd.DataFrame): DataFrame to use for the calculations
+        df (pd.DataFrame): Input dataframe.
 
     Returns:
-        pd.DataFrame: DataFrame with category and sub_category columns
+        pd.DataFrame: Dataframe with the category and the subcategories columns, without the to_drop ones.
     """
     df = df[df['category_code'].notnull()]
     df1 = df['category_code'].str.split('.', expand=True)
@@ -115,14 +115,15 @@ def subcategories_extractor(df, to_drop):
 
 
 def plot_bar(to_plot, title, xlabel='x', ylabel='y', color='royalblue', xticks=None, figsize=(15, 6)):
-    """Given a dataframe, plots a histogram over its values
+    """Plot a histogram over a dataframe.
 
     Args:
-        to_plot (pd.DataFrame): Dataframe to plot
-        title (str): Title of the plot
+        to_plot (pd.DataFrame): Dataframe to plot.
+        title (str): Title of the plot.
         xlabel (str, optional): Name of the x label. Defaults to 'x'.
         ylabel (str, optional): Name of the y label. Defaults to 'y'.
         color (str, optional): Color of the plot. Defaults to 'royalblue'.
+        xticks (list of lists, optional): Ticks of the plot. Defaults to None, which means that all the ticks are plotted.
     """
 
     _ = plt.figure()
@@ -146,32 +147,49 @@ def plot_bar(to_plot, title, xlabel='x', ylabel='y', color='royalblue', xticks=N
 # 1.a
 
 def plt_avg_event_session(df_paths):
-    # df = pd.read_csv(path, usecols=['event_type', 'user_session'], iterator=True, chunksize=1000000)
+    """Plot the average number of times users perform each of the following operations: `view`, `cart`, `purchase`.
+    Skip the `remove_from_cart`, since there isn't any.
+
+    Args:
+        df_paths (list): List of the paths of the Pandas dataframes we wish to plot the statistics.
+    """
+    # Load data in an iterable to work in chunks
     df = iter_all_dfs(df_paths, ['event_type', 'user_session'])
     
+    # Initialize values
     num_sessions = 0
     num_views = 0
     num_cart = 0
     num_purchases = 0
     
+    # Since we loaded the dataframes as an iterable, we need to iterate in it and perform
+    # the operations on each of the chunks.
     for frame in df:
-        views = views_extractor(frame)
-        cart = cart_extractor(frame)
-        purchases = purchases_extractor(frame)
+        # Extract the views, carts and purchases
+        views = only_views(frame)
+        cart = only_carts(frame)
+        purchases = only_purchases(frame)
         
+        # Number of views, carts and purchases for each chunk is obtained with a single groubpy
         num_views += views.groupby('user_session').event_type.count().sum()
         num_cart += cart.groupby('user_session').event_type.count().sum()
         num_purchases += purchases.groupby('user_session').event_type.count().sum()
         
+        # We also need to keep track of the number of sessions
         num_sessions += frame['user_session'].nunique()
-        
+    
+
     avg_num_operations = [num_views, num_cart, num_purchases]
     
+    # To extract the mean average of each operation, we need to divide for the number of unique sessions
     avg_num_operations = [num / num_sessions for num in avg_num_operations]
     
     operation_names = ['View', 'Cart', 'Purchase']
     
+    # Since our plot function receives a Pandas df as input, create one using the statistics we just extracted
     avg_num_df = pd.DataFrame(avg_num_operations, columns=['average number'], index=operation_names)
+
+    # Plot
     plot_bar(to_plot=avg_num_df,
              title='Average number of operations for user session',
              xlabel='Event type',
@@ -184,44 +202,103 @@ def plt_avg_event_session(df_paths):
 # 1.b
 
 def avg_view_before_cart(df_paths):
-    # df = pd.read_csv(path, usecols=['event_type', 'user_id', 'product_id'], iterator=True, chunksize=1000000)
+    """Compute the number of times a user views a product before adding it to the cart.
+
+    Args:
+        df_paths (list): List of the paths of the Pandas dataframes we wish to compute the statistics.
+
+    Returns:
+        float: Average number of the times a user views a product before adding it into the cart.
+    """
+    # Load data in an iterable to work in chunks
     df = iter_all_dfs(df_paths, ['event_type', 'user_id', 'product_id'])
 
+    # Initialize an empty dataframe on which we are going to append
+    # the statistics for each chunk.
     results = pd.DataFrame()
+
+    # Since we loaded the dataframes as an iterable, we need to iterate in it and perform
+    # the operations on each of the chunks.
     for frame in df:
+        # Create two new columns, one for the view instances and one for the cart instances
         frame['is_view'] = 0
         frame['is_cart'] = 0
+        
+        # To keep track of what's what, set to 1 the respective new column where we find
+        # one of these instances
         frame.loc[frame['event_type'] == 'view', 'is_view'] = 1
         frame.loc[frame['event_type'] == 'cart', 'is_cart'] = 1
-        frame = frame.groupby(['user_id', 'product_id']).sum().reset_index()
-        results = results.append(frame)
         
+        # Sum over the user and the product so that we can analyze the new columns
+        # and find out how many times the user viewed/carted a certain product
+        frame = frame.groupby(['user_id', 'product_id']).sum().reset_index()
+
+        # Since we're working in chunks, we need to append our results to a new dataframe
+        # each time. This is what results is used for
+        results = results.append(frame)
+    
+    # Once we've finished, we need to use the groupby again, since we could have created
+    # new rows with the same user and product over and over (we're working with chunks!)
     results = results.groupby(['user_id', 'product_id']).sum().reset_index()
+
+    # We want only the elements for which the product has actually put into the cart
     results = results[results['is_cart'] != 0]
+
+    # Extract the average by just using the mean
     avg = (results['is_view'] / results['is_cart']).mean()
+
     return avg
 
 # 1.c
 
 def purchase_after_cart_prob(df_paths):
-    # df = pd.read_csv(path, usecols=['event_type', 'user_id', 'product_id'], iterator=True, chunksize=50000)
+    """Compute the probability that products added once to the cart are bought.
+
+    Args:
+        df_paths (list): List of the paths of the Pandas dataframes we wish to compute the statistics.
+
+    Returns:
+        float: Probability that products are bought after being added to the cart once.
+    """
+    # Load data in an iterable to work in chunks
     df = iter_all_dfs(df_paths, ['event_type', 'user_id', 'product_id'])
 
+    # Initialize an empty dataframe on which we are going to append
+    # the statistics for each chunk.
     results = pd.DataFrame()
     
+    # Since we loaded the dataframes as an iterable, we need to iterate in it and perform
+    # the operations on each of the chunks.
     for frame in df:
+        # We don't need the views instances
         frame = frame[frame['event_type'] != 'view']
+
+        # Create two new columns, ore for the cart and one for the purchase instances
         frame['is_cart'] = 0
         frame['is_purchase'] = 0
+
+        # To keep track of what's what, set to 1 the respective new column where we find
+        # one of these instances
         frame.loc[frame['event_type'] == 'cart', 'is_cart'] = 1
         frame.loc[frame['event_type'] == 'purchase', 'is_purchase'] = 1
+
+        # Sum over the user and the product so that we can analyze the new columns
+        # and find out how many times the user carted/purchased a certain product
         frame = frame.groupby(['user_id', 'product_id']).sum().reset_index()
+
+        # Since we're working in chunks, we need to append our results to a new dataframe
+        # each time. This is what results is used for
         results = results.append(frame)
     
+    # Once we've finished, we need to use the groupby again, since we could have created
+    # new rows with the same user and product over and over (we're working with chunks!)
     results = results.groupby(['user_id', 'product_id']).sum()
+
+    # We just want the items that are put in the cart once
     results = results[results['is_cart'] == 1]
 
-
+    # To compute the probability, we just need to divide the number of times an item is put
+    # into cart once and bought, for the total number of times it is put into cart
     cart_purch_num_1 = results[(results['is_purchase'] == 1) & (results['is_cart'] == 1)].shape[0]
     cart_total_num_1 = results.shape[0]
 
@@ -230,6 +307,13 @@ def purchase_after_cart_prob(df_paths):
 # 1.d
 
 def check_event_types(df_paths):
+    """Compute the list of unique elements in the `event_type` column for each dataframe
+    in the list of paths.
+
+    Args:
+        df_paths (list): List of the paths of the Pandas dataframes we wish to compute the statistics.
+    """
+    # Iterate through the path of the dataframes
     for path in df_paths:
         print('Unique values in the `event_type` column for dataframe `{}` are:'.format(path.split('/')[-1]))
         df = pd.read_csv(path, usecols=['event_type'], iterator=True, chunksize=5000000)
@@ -244,42 +328,62 @@ def check_event_types(df_paths):
 # 1.e
 
 def avg_time_view_action(df_paths):
+    """Compute average time between the first view and purchase/cart.
+
+    Args:
+        df_paths (list): List of the paths of the Pandas dataframes we wish to compute the statistics.
+    """
+    # Load data in an iterable to work in chunks
     df = iter_all_dfs(df_paths, ['event_time', 'event_type', 'user_session'], chunksize=2000000)
     
+    # Initialize three dataframes, one for the views statistics, one for the carts and one for the purchases
     views_results = pd.DataFrame()
     carts_results = pd.DataFrame()
     purchases_results = pd.DataFrame()
     
-    
+    # Working with chunks
     for frame in df:
+        # For each chunk we need to parse the dates
         frame = df_parsed(frame)
         
-        views = views_extractor(frame).drop_duplicates('user_session')
-        carts = cart_extractor(frame).drop_duplicates('user_session')
-        purchases = purchases_extractor(frame).drop_duplicates('user_session')
+        # Create three new dataframes, each one containing only one type of event (view, cart, purch)
+        # For each of these ones, we drop the duplicates, so that we just see the first action in each session
+        views = only_views(frame).drop_duplicates('user_session')
+        carts = only_carts(frame).drop_duplicates('user_session')
+        purchases = only_purchases(frame).drop_duplicates('user_session')
         
+        # Since we're working with chunks, we need to append each time and create a big dataframe for the stats
         views_results = views_results.append(views)
         carts_results = carts_results.append(carts)
         purchases_results = purchases_results.append(purchases)
         
+        # Free some memory since this function is very low-memory efficient
         del frame, views, carts, purchases
         gc.collect()
         
-        
+    # Since we appended multiple times the dataframes, even if the initial dataframe was
+    # sorted by the event time, this new one is not necessarily.
+    # After the sorting, drop again the duplicates for the same reason: working with chunks
     views_results = views_results.sort_values(by='event_time').drop_duplicates('user_session')
     carts_results = carts_results.sort_values(by='event_time').drop_duplicates('user_session')
     purchases_results = purchases_results.drop_duplicates('user_session')
     
+    # Now we can do an inner join with the merge function, obtaining a big dataframe
+    # with the event_time of the view, and event time for the cart (views_carts)
+    # and one with event_time of view and cart (views_purchases)
+    # Remember to join on the user session!
     views_carts = pd.merge(views_results, carts_results, on='user_session')
     views_purchases = pd.merge(views_results, purchases_results, on='user_session')
     
+    # We want to compute the average time between these actions, so we need their difference
     time_diff_carts = views_carts['event_time_y'] - views_carts['event_time_x']
     time_diff_purchases = views_purchases['event_time_y'] - views_purchases['event_time_x']
 
-
+    # Just compute the mean distance and then format so it is readable
     avg_carts = str(timedelta(seconds=time_diff_carts.mean().total_seconds())).split('.')[0]
     avg_purchases = str(timedelta(seconds=time_diff_purchases.mean().total_seconds())).split('.')[0]
-        
+    
+    # Print the results
     print('Average time between first view and first cart is {}.'.format(avg_carts))
     print('Average time between first view and first purchase is {}.'.format(avg_purchases))
     
@@ -287,113 +391,158 @@ def avg_time_view_action(df_paths):
 
 # [RQ2] Functions
 
-def products_for_category(df_paths, color='darkcyan'):
-    # df = pd.read_csv(path, usecols=['event_type', 'category_code', 'product_id'], iterator=True, chunksize=100000)
+def products_for_category(df_paths):
+    """Plot a histogram representing the number of sold products per category.
+
+    Args:
+        df_paths (list): List of the paths of the Pandas dataframes we wish to plot the statistics.
+
+    Returns:
+        pd.DataFrame: Dataframe containing the plotted statistics.
+    """
+    # Load the dataframe as an iterable to use chunks
     df = iter_all_dfs(df_paths, ['event_type', 'category_code', 'product_id'])
+
+    # At some point, we're going to extract the category and subcategories.
+    # We just need the category, so drop the subcategories.
     cols_to_drop = ['sub_category_1', 'sub_category_2', 'sub_category_3']
 
-
-    i = 0
+    results = pd.DataFrame()
+    # Iterate on the chunks
     for frame in df:
-        frame = views_extractor(frame)
-        results = subcategories_extractor(frame, cols_to_drop)
-        results = results.groupby('category', sort=False).count().reset_index()
-        if i == 0:
-            entire_df = results
-        else:
-            entire_df = entire_df.append(results)
-        i += 1
-        del results
-        gc.collect()
-    entire_df =  entire_df.groupby('category').sum().sort_values(by='product_id', ascending=False)['product_id']
+        # Extract only the purchases 
+        frame = only_purchases(frame)
 
-    # We can then plot the histogram of the number of viewed products for sub category
-    plot_bar(to_plot=entire_df,
+        # Extract the the category from the `category_code` column
+        frame = subcategories_extractor(frame, cols_to_drop)
+
+        # Count the number of sold products for category
+        frame = frame.groupby('category', sort=False).count().reset_index()
+
+        # Append to a new df for each chunk
+        results = results.append(frame)
+
+        del frame
+        gc.collect()
+
+    # Once we've finished working with the chunks, we need to sum over the category again
+    # since appending could've created new rows with the same category
+    # Once we've done that, we just sort the number of sold products for a better looking histogram
+    results =  results.groupby('category').sum().sort_values(by='product_id', ascending=False)['product_id']
+
+    # Plot
+    plot_bar(to_plot=results,
             title='Products sold for category',
             xlabel='categories',
             ylabel='products sold',
-            color=color
+            color='darkcyan'
             )
     
-    gc.collect()
-    return entire_df
+    # Return same results
+    return results
 
 # 2.a
 
-def most_viewed_subcategories_month(df_paths, num_subcat=15, plot=True, color='mediumvioletred'):
-    """Plot the histogram of the viewed products for subcategory (in ascending order)
+def most_viewed_subcategories_month(df_paths, num_subcat=15):
+    """Plot the most viewed subcategories.
 
     Args:
-        df (pd.DataFrame): Dataframe to use for the calculations
+        df_paths (list): List of the paths of the Pandas dataframes we wish to plot the statistics.
+        num_subcat (int, optional): Number of subcategories to include in the plot. Defaults to 15.
+
+    Returns:
+        pd.DataFrame: Dataframe with the plotted statistics.
     """
-    # df = pd.read_csv(path, usecols=['category_code', 'event_type'], iterator=True, chunksize=100000)
+    # Iterable of the dataframes, to use chunks
     df = iter_all_dfs(df_paths, ['category_code', 'event_type'])
 
+    # List of the columns we don't want when extracting categories and subcategories
+    # In this case we just want to work with the first subcategory, drop the others
     cols_to_drop = ['category', 'sub_category_2', 'sub_category_3']
 
-    i = 0
+    # Initialize the resulting dataframe after the chunks
+    results = pd.DataFrame()
+
+    # Iterate through the chunks of the df
     for frame in df:
-        frame = views_extractor(frame)
-        results = subcategories_extractor(frame, to_drop=cols_to_drop)
-        results = results.groupby('sub_category_1', sort=False).count().reset_index()
+        # Extract only the views
+        frame = only_views(frame)
 
-        if i == 0:
-            entire_df = results
-        else:
-            entire_df = entire_df.append(results)
-        i += 1
-        del results
+        # Extract only the first subcategory
+        frame = subcategories_extractor(frame, to_drop=cols_to_drop)
+
+        # Compute statistics with a groupby and count oer the first sub_category
+        frame = frame.groupby('sub_category_1', sort=False).count().reset_index()
+
+        # Append to the resulting dataframe
+        results = results.append(frame)
+
+        del frame
         gc.collect()
-    entire_df =  entire_df.groupby('sub_category_1').sum().sort_values(by='event_type', ascending=False)['event_type']
-
-    # We can then plot the histogram of the number of viewed products for sub category
-    if plot:
-        plot_bar(to_plot=entire_df.iloc[:num_subcat],
-                title='Views for subcategory',
-                xlabel='subcategories',
-                ylabel='views',
-                color=color
-                )
     
-    gc.collect()
-    return entire_df
+    # Compute again the sum over the sub_category since we could've added new rows
+    # with the same sub_category
+    results =  results.groupby('sub_category_1').sum().sort_values(by='event_type', ascending=False)['event_type']
+
+    # Plot
+    plot_bar(to_plot=results.iloc[:num_subcat],
+            title='Views for subcategory',
+            xlabel='subcategories',
+            ylabel='views',
+            color='mediumvioletred'
+            )
+    
+    # Return the same plotted statistics
+    return results
 
 # 2.b
 def best_in_cat(df_paths, cat=None):
-    """Plot the histogram of the viewed products for subcategory (in ascending order)
+    """Compute the 10 most sold products per category.
 
     Args:
-        df (pd.DataFrame): Dataframe to use for the calculations
-    """
+        df_paths (list): List of the paths of the Pandas dataframes we wish to compute the statistics.
+        cat (string, optional): If given, show the 10 most sold products of the category. Defaults to None.
 
+    Returns:
+        pd.DataFrame: Dataframe of the 10 most sold products per category, or for a single category if specified. 
+    """
+    # Load data in an iterable to work in chunks
     df = iter_all_dfs(df_paths, ['event_type', 'category_code', 'product_id'])
 
     cols_to_drop = ['sub_category_1', 'sub_category_2', 'sub_category_3']
-    # df = pd.read_csv(path, usecols=['event_type', 'category_code', 'product_id'], iterator=True, chunksize=100000)
 
-    i = 0
+    results = pd.DataFrame()
+
     for frame in df:
-        frame = purchases_extractor(frame)
+        frame = only_purchases(frame)
+
+        # Drop the rows for which we don't have a category
         frame = frame[frame['category_code'].notnull()]
-        if frame.empty:
-            results = None
-        else:
-            results = subcategories_extractor(frame, to_drop=cols_to_drop)
-            results = results.groupby(['category', 'product_id'], sort=False).count()
-        if i == 0:
-            entire_df = results
-        else:
-            entire_df = entire_df.append(results)
-        i += 1
+
+        # Since we're working with chunks, there's the possibility that
+        # We've fallen in a chunk we're every row didn't have a category
+        if not frame.empty:
+            frame = subcategories_extractor(frame, to_drop=cols_to_drop)
+
+            # Count the number of sold products for each category and product in the chunk
+            frame = frame.groupby(['category', 'product_id'], sort=False).count()
+        
+        # Append the results
+        results = results.append(frame)
+
         del frame
         gc.collect()
-    entire_df = entire_df.groupby(['category', 'product_id']).sum()
-    entire_df = entire_df.groupby('category', group_keys=False, sort=False).apply(lambda x: x.sort_values(by='event_type', ascending=False).head(10)).reset_index()
+
+    # To extract the most sold products, we need to sum over the category and product
+    # then, we need to sort for each group of the category groupby and take the first 10 elements (head)
+    results = results.groupby(['category', 'product_id']).sum()
+    results = results.groupby('category', group_keys=False, sort=False).apply(lambda x: x.sort_values(by='event_type', ascending=False).head(10)).reset_index()
+    
     if cat == None:
-        return entire_df
+        return results
     
     gc.collect()
-    return entire_df[entire_df['category'] == cat]
+    return results[results['category'] == cat]
 
 
 # [RQ3] Functions
@@ -401,49 +550,58 @@ def best_in_cat(df_paths, cat=None):
 # 3.a
 
 def avg_price_cat(df_paths, category):
-    """Plot the average price of the products sold by the brands in a given category
+    """Plot the average price of the products sold by the brands within a category.
 
     Args:
-        df (pd.DataFrame): Dataframe to use for the calculations
-        category (int): Integer indicating the category for which we want the plot
+        df_paths (list): List of the paths of the Pandas dataframes we wish to plot the statistics.
+        category (string): Category for which we want to plot the statistics.
     """
     df = iter_all_dfs(df_paths, ['event_type', 'category_code', 'brand', 'price'])
 
     cols_to_drop = ['sub_category_1', 'sub_category_2', 'sub_category_3']
-    # df = pd.read_csv(path, usecols=['event_type', 'category_code', 'brand', 'price'], iterator=True, chunksize=100000)
     
+    # Function we will use to aggregate the results
+    # To compute the mean, since we're working with chunks, we need to
+    # keep both the sum and the count
     def f(x):
         d = {}
         d['price_sum'] = x['price'].sum()
         d['price_count'] = x['price'].count()
         return pd.Series(d, index=['price_sum', 'price_count'])
     
-    i = 0
+
+    results = pd.DataFrame()
+
     for frame in df:
-        frame = purchases_extractor(frame)
+        frame = only_purchases(frame)
         frame = frame[frame['category_code'].notnull()]
-        if frame.empty:
-            results = None
-        else:
-            results = subcategories_extractor(frame, to_drop=cols_to_drop)
-            results = results.loc[results['category'] == category].groupby('brand', sort=False).apply(f)
-        if i == 0:
-            entire_df = results
-        else:
-            entire_df = entire_df.append(results)
-        i += 1
+        if not frame.empty:
+            frame = subcategories_extractor(frame, to_drop=cols_to_drop)
+
+            # Eventually, we are going to compute an average. To do so, we need to
+            # keep both the sum and the count for each chunk, since if the count changes
+            # each mean has a different weight
+            frame = frame.loc[results['category'] == category].groupby('brand', sort=False).apply(f)
+        
+        results = results.append(frame)
+
         del frame
         gc.collect()
-    entire_df = entire_df.groupby(['brand']).sum()
-    entire_df = (entire_df['price_sum'] / entire_df['price_count'])
+
+    # Once we've worked every chunk, we can sum the sums and the counts and compute the mean
+    results = results.groupby(['brand']).sum()
+
+    # Mean:
+    results = (results['price_sum'] / results['price_count'])
     
-    brands = entire_df.index
+    # There are too many brands for a single category, change the xticks
+    brands = results.index
     xticks_nums = range(0, len(brands), 20)
     xticks_names = [brands[i] for i in xticks_nums]
 
 
-    # Plot them
-    plot_bar(to_plot=entire_df,
+    # Plot
+    plot_bar(to_plot=results,
              title='Average price for brand',
              xlabel='brands',
              ylabel='avg price',
@@ -456,95 +614,136 @@ def avg_price_cat(df_paths, category):
 # 3.b
 
 def highest_price_brands(df_paths):
-    """Find, for each category, the brand with the highest average price. Return all the results in ascending order by price
+    """Compute the brand with the highest average price for each category.
 
     Args:
-        df (pd.DataFrame): Dataframe to use for the calculations
+        df_paths (list): List of the paths of the Pandas dataframes we wish to compute the statistics.
 
     Returns:
-        list: List of brands sorted in ascending order by their respective price
+        pd.DataFrame: Dataframe containing the category, the highest price brand along with its average price in ascending order.
     """
     df = iter_all_dfs(df_paths, ['category_code', 'brand', 'price'])
 
     cols_to_drop = ['sub_category_1', 'sub_category_2', 'sub_category_3']
 
-    # df = pd.read_csv(path, usecols=['category_code', 'brand', 'price'], iterator=True, chunksize=100000)
-    
+    # To compute the mean in chunks, we need both the sum and the count of the elements    
     def f(x):
         d = {}
         d['price_sum'] = x['price'].sum()
         d['price_count'] = x['price'].count()
         return pd.Series(d, index=['price_sum', 'price_count'])
     
-    i = 0
+    results = pd.DataFrame()
     for frame in df:
         frame = frame[frame['category_code'].notnull()]
-        if frame.empty:
-            results = None
-        else:
-            results = subcategories_extractor(frame, to_drop=cols_to_drop)
+
+        if not frame.empty:
+            frame = subcategories_extractor(frame, to_drop=cols_to_drop)
         
-        results = results.groupby(['category', 'brand']).apply(f).reset_index()
+        # Group on the category and brand and extract sum and count
+        frame = frame.groupby(['category', 'brand']).apply(f).reset_index()
          
-        if i == 0:
-            entire_df = results
-        else:
-            entire_df = entire_df.append(results)
-        i += 1
+        results = results.append(results)
+
         del frame
         gc.collect()
-        
-    entire_df = entire_df.groupby(['category', 'brand']).sum()
-    entire_df['price_avg'] = entire_df['price_sum'] / entire_df['price_count']
-    entire_df = entire_df.drop(columns=['price_sum', 'price_count'])
-    # entire_df = entire_df.groupby('category', group_keys=False, sort=False).apply(lambda x: x.sort_values(by='price_avg', ascending=False).head(1)).sort_values(by='price_avg')    
-    entire_df = entire_df.iloc[entire_df.reset_index().groupby('category').idxmax()['price_avg']].sort_values(by='price_avg')
-    gc.collect
-    return entire_df
+    
+    # Once we finished working on the chunks, to extract the mean use the sums and counts summed up
+    results = results.groupby(['category', 'brand']).sum()
+    results['price_avg'] = results['price_sum'] / results['price_count']
+
+    # We don't need the price_sum and price_count columns anymore since we have the mean
+    results = results.drop(columns=['price_sum', 'price_count'])
+
+    # To extract the max for each category, we can use the groupby on the idxmax
+    results = results.iloc[results.reset_index().groupby('category').idxmax()['price_avg']].sort_values(by='price_avg')
+    
+    return results
 
 # [RQ4] functions
 
 # 4.a
 
 def monthly_profit_all_brands(df_paths, brand):
-    
+    """Compute profit of all the brands for each month and in particular of a given one.
+
+    Args:
+        df_paths (list): List of the paths of the Pandas dataframes we wish to compute the statistics.
+        brand (strin): Brand we want to analyze.
+
+    Returns:
+        pd.DataFrame: Dataframe containing the profit for each brand across the monhts.
+        pd.DataFrame: Dataframe containing the profit for the given brand across the months.
+    """
+    # Initialize a big dataframe
     entire_df = pd.DataFrame()
+
+    # We are going to work on each dataframe-month separately
     for month_path in df_paths:
         
+        # Read the month-dataframe
         df = pd.read_csv(month_path, usecols=['event_type', 'brand', 'price'], iterator=True, chunksize=100000)
+        
+        # Iterate through the chunks of the given month-dataframe
         results = pd.DataFrame()
         for frame in df:
             frame = frame[frame['brand'].notnull()]
             if not frame.empty:
-                frame = purchases_extractor(frame)
+                # From the purchases-df, extract the sum of the prices for each brand
+                frame = only_purchases(frame)
                 frame = frame.groupby('brand').sum()
+
+                # Append the df
                 results = results.append(frame)
         
+        # Extract the month name using some simple parsing
         month_name = month_path.split('-')[1][:3]
+
+        # Sum again across the groups w.r.t. the brand column
+        # This is the results for each month
         results = results.groupby('brand').sum().rename(columns={'price': month_name})
-        entire_df = pd.concat([entire_df, results], axis=1)#[['Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr']]
-        
+
+        # Append to the big dataframe the results for each month
+        entire_df = pd.concat([entire_df, results], axis=1)
+    
+    # Return both the entire dataframe with all the brands and the one with only the selected one
     return entire_df, entire_df[entire_df.index == brand]
 
 # 4.b
 
 def top_losses(all_brands, num_worst=3):
+    """Compute the top brands that suffered the biggest losses in earnings between one month and the next.
+
+    Args:
+        all_brands (pd.DataFrame): Dataframe containing the profit data for all the brands across all the months.
+        num_worst (int, optional): Num of worst brands to show. Defaults to 3.
+    """
+    # Create a copy, in which we are going to put the differences between the months profits
     months_diff_df = all_brands.copy()
     cols = all_brands.columns
     new_cols = []
+
+    # Generate the differences for each month
     for i in range(0, len(cols) - 1):
         month_diff = cols[i] + '-' + cols[i + 1]
         new_cols.append(month_diff)
         months_diff_df[month_diff] = months_diff_df[cols[i]] - months_diff_df[cols[i + 1]]
 
+    # Select just the new columns
     months_diff_df = months_diff_df[new_cols]
     
+    # Extract the max for each row, that is the month in which each brand suffered the most
+    # Along with its index
     max_rows = pd.DataFrame(data=[months_diff_df.max(axis=1), months_diff_df.idxmax(axis=1)]).T
 
+    # Using some parsing techniques, we can extrapolate the months where we had the max losses
     max_rows[['first_month', 'second_month']] = max_rows[1].str.split('-', expand=True)
 
+    # Sort these values and take the first num_worst values 
     max_rows = max_rows.sort_values(by=0, ascending=False).drop(columns=[0, 1]).head(num_worst)
     
+    # For each one of these, find the first and second month where the brand had its loss
+    # and the corresponding percentage lost. Then print these values
     for i in range(num_worst):
         brand = max_rows.index[i]
         month_1 = max_rows['first_month'][i]
@@ -557,42 +756,55 @@ def top_losses(all_brands, num_worst=3):
 # [RQ5] functions
 
 def avg_users(df_paths):
+    """For each day of the weeek, plot the hourly average number of visitors the store has.
 
+    Args:
+        df_paths (list): List of the paths of the Pandas dataframes we wish to compute the statistics.
+
+    Returns:
+        defaultdict: Dictionary containing the dataframes of the statistics for each weekday.
+    """
     df = iter_all_dfs(df_paths, ['event_time', 'user_id'])
 
-    # df = pd.read_csv(path, usecols=['event_time', 'user_id'], iterator=True, chunksize=100000)
-    
-    i = 0
     n_weekdays = [0, 0, 0, 0, 0, 0, 0]
     
+    # We're going to define a defaultdict containing the data for each weekday
+    # This means that by default, its value should be an empty dataframe
+    # since we're going to use dataframes to store the data for each weekday
     def def_value():
         return pd.DataFrame()
 
     week_days = defaultdict(def_value)
     
+    # Iterate in the chunks
     for frame in df:
+        # First parse the column for the dates
         frame = df_parsed(frame)
+
+        # For each chunk, we need to see which unique weekday there are
         unique_dates = frame.event_time.dt.strftime('%d-%m-%y').unique()
         
+        # Update the number of weekdays we're seeing (# mondays, # tuesdays...)
         for date in unique_dates:
             n_weekdays[datetime.strptime(date, "%d-%m-%y").weekday()] += 1
 
-        # week_days = defaultdict(def_value)
-        
+        # Group for the weekday, then count grouping on each hour of that specific weekday
         for _, week_day_df in frame.groupby(frame.event_time.dt.weekday):
             users_num = week_day_df.groupby(week_day_df.event_time.dt.hour).count()
             current_weekday = week_day_df.event_time.iloc[0].strftime('%A')
+
+            # Append the data to the corresponding dataframe in the dictionary
             week_days[current_weekday] = week_days[current_weekday].append(users_num['user_id'])
 
+    # Now we need to compute the averages, for each weekday. For this we use the number of weekdays
+    # we computed in the previous calculations
     for day in week_days:
         week_days[day] = week_days[day].T.sum(axis=1)
         week_days[day] /= n_weekdays[time.strptime(day, "%A").tm_wday]
 
     del frame
     gc.collect()
-        
-        
-        
+    
     plots_colors = ['royalblue', 'orange', 'mediumseagreen',
                     'crimson', 'darkcyan', 'coral', 'violet']
 
@@ -605,6 +817,8 @@ def avg_users(df_paths):
                  color=plots_colors[i]
                  )
         gc.collect
+
+    # Return the data for all the weekdays
     return week_days
 
 # [RQ6] functions
@@ -612,34 +826,66 @@ def avg_users(df_paths):
 # 6.a
 
 def purch_view(df):
-    views = views_extractor(df)
-    purchases = purchases_extractor(df)
+    """Compute the number of purchases and the number of views per product for a given dataframe.
+
+    Args:
+        df (pd.DataFrame): Dataframe to use for the calculations.
+
+    Returns:
+        float: Number of purchases in the dataframe.
+        float: Number of views in the dataframe.
+    """
+    views = only_views(df)
+    purchases = only_purchases(df)
+
     n_purchases = purchases.groupby('product_id', sort=False)['event_type'].count().sum().item()
     n_views = views.groupby('product_id', sort=False)['event_type'].count().sum().item()
     return n_purchases, n_views
 
 
 def conversion_rate(df_paths):
+    """Compute the conversion rate (# purchases / # views) of the store.
+
+    Args:
+        df_paths (list): List of the paths of the Pandas dataframes we wish to compute the statistics.
+
+    Returns:
+        float: Conversion rate of the store.
+    """
+    # Load the iterable for all the dataframes in the paths
     df = iter_all_dfs(df_paths, ['event_type', 'product_id'])
 
-    # df = pd.read_csv(path, usecols=['event_type', 'product_id'], iterator=True, chunksize=100000)
+    # Initialize the values for purchases and views
     n_purchases = 0
     n_views = 0
+
     for frame in df:
+        # For each chunk, compute the number of purchases and views and sum to the previous
         purchases, views = purch_view(frame)
         n_purchases += purchases
         n_views += views
-        
+    
+    # Return the conversion rate
     return n_purchases / n_views
 
 # 6.b
 
 def category_conv_rate(df_paths):
+    """Plot and return the conversion rate of each category in decreasing order.
+
+    Args:
+        df_paths (list): List of the paths of the Pandas dataframes we wish to compute the statistics.
+
+    Returns:
+        pd.DataFrame: Dataframe containing the conversion rate for each category of the df.
+    """
     df = iter_all_dfs(df_paths, ['event_type', 'product_id', 'category_code'])
 
     cols_to_drop = ['sub_category_1', 'sub_category_2', 'sub_category_3']
-    # df = pd.read_csv(path, usecols=['event_type', 'product_id', 'category_code'], iterator=True, chunksize=1000000)
-    
+
+    # We're going to work with a defaultdict, which represetn the number of purchases and views
+    # For this reason we're using a np array with both zeros, because it's very reliable in terms
+    # of broadcasting operations    
     def def_value():
         return np.array([0, 0], dtype=float)
 
@@ -649,13 +895,20 @@ def category_conv_rate(df_paths):
         frame = frame[frame['category_code'].notnull()]
         if not frame.empty:
             frame = subcategories_extractor(frame, to_drop=cols_to_drop)
+            # In each chunk, compute the number of purchases and views for each category
+            # and sum them to the previous values in the dictionary
             for category_name, sub_frame in frame.groupby('category', sort=False):
                 purchases_and_views[category_name] += purch_view(sub_frame)
     
+    # Now we can convert the dictionary to a Pandas dataframe, so that we can use our plotting function easily
+    # We're going to use two different columns to store the values, so that it is easy to manage them
     cat_df = pd.DataFrame(purchases_and_views).T.rename(columns={0: 'purch_num', 1: 'views_num'})
+    
+    # Compute the conversion rate for each category
     cat_df['conversion_rate'] = cat_df['purch_num'] / cat_df['views_num']
     cat_df = cat_df.drop(columns=['purch_num', 'views_num']).sort_values(by=['conversion_rate'], ascending=False)
     
+    # Plot
     plot_bar(to_plot=cat_df,
              title='Conversion rate for category',
              xlabel='category',
@@ -669,24 +922,35 @@ def category_conv_rate(df_paths):
 # [RQ7] functions
 
 def pareto_principle(df_paths, users_perc=20):
+    """Compute the percentage of business conducted by a percentage of users.
+
+    Args:
+        df_paths (list): List of the paths of the Pandas dataframes we wish to compute the statistics. 
+        users_perc (int, optional): Percentage of users to consider. Defaults to 20.
+
+    Returns:
+        float: Percentage of business conducted by the given percentage of users.
+    """
     df = iter_all_dfs(df_paths, ['event_type', 'price', 'user_id'])
     
-    # df = pd.read_csv(path, usecols=['event_type', 'price', 'user_id'], iterator=True, chunksize=1000000)
-    
+    # We decided to use a reduce function here
+    # So first we need to define the initial results
     initial_results = {
             'tot_purchases': 0,
             'purchases_for_user': pd.DataFrame(),
             'unique_users': np.array([])
         }
 
+    # Then we need to define the function to use in the reduce
     def accumulate_data(prev, frame):
-        purchases = purchases_extractor(frame)
+        purchases = only_purchases(frame)
         return {
             'tot_purchases': prev['tot_purchases'] + purchases['price'].sum(),
             'purchases_for_user': prev['purchases_for_user'].append(purchases.groupby('user_id', sort=False).sum()),
             'unique_users': np.append(prev['unique_users'], purchases['user_id'].unique())
         }
 
+    # At this point it is enough to use the reduce function on the data
     tot_purchases, purchases_for_user, unique_users = functools.reduce(accumulate_data, df, initial_results).values()
 
     unique_users_number = np.unique(unique_users).size
@@ -705,7 +969,6 @@ def pareto_principle(df_paths, users_perc=20):
     twenty_most = purchases_for_user.iloc[:twnty_percent_users]['price'].sum()
     
     # Return the percentage of expenses made by them w.r.t. to the total
-    gc.collect()
     return twenty_most / (tot_purchases / 100)
 
 
