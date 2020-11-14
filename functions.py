@@ -741,10 +741,28 @@ def monthly_profit_all_brands(df_paths, brand):
         results = results.groupby('brand').sum().rename(columns={'price': month_name})
 
         # Append to the big dataframe the results for each month
-        entire_df = pd.concat([entire_df, results], axis=1)
+        entire_df = pd.concat([entire_df, results], axis=1).fillna(0)
     
     # Return both the entire dataframe with all the brands and the one with only the selected one
     return entire_df, entire_df[entire_df.index == brand]
+
+def compare_profits(all_brands_df):
+    """Prints general statistics about the profits computed with the monthly_profit_all_brands function.
+
+    Args:
+        all_brands_df (pd.DataFrame): Dataframe containing the stats for all the brands in the dataframes.
+    """
+    print('Mean of the brand profits along all the months considered: \n')
+    print(all_brands_df.mean(axis=1), '\n')
+
+    print('Average of the profits along all the brands (all months): \n')
+    print(all_brands_df.mean(axis=1).mean(), '\n')
+
+    print('Max of the profits along all the brands (all months): \n')
+    print(all_brands_df.mean(axis=1).max(), '\n')
+
+    print('Min of the profits along all the brands (all months): \n')
+    print(all_brands_df.mean(axis=1).min(), '\n')
 
 # 4.b
 
