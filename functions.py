@@ -209,8 +209,8 @@ def avg_view_before_cart(df_paths):
         float: Average number of the times a user views a product before adding it into the cart.
     """
 
-    # Initialize an empty dataframe on which we are going to append
-    # the statistics for each chunk.
+    # Initialize an empty dictionary on which we are going to put
+    # the statistics for each month.
     averages = {}
     for month_path in df_paths:
         # Read the month-dataframe
@@ -223,7 +223,7 @@ def avg_view_before_cart(df_paths):
         # Get the month name using simple parsing techniques
         month_name = month_path.split('-')[1][:3]
         
-        # Since we loaded the dataframes as an iterable, we need to iterate in it and perform
+        # Since we loaded the dataframe as an iterable, we need to iterate in it and perform
         # the operations on each of the chunks.
         for frame in df:
             # Create two new columns, one for the view instances and one for the cart instances
